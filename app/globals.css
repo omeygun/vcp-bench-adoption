@@ -84,10 +84,10 @@ button { font: inherit; cursor: pointer; }
 /* svg map layers */
 .trail { fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
 .bench rect { fill: #6b4a2b; stroke: #fff; cursor: pointer; }
-.bench rect.hit { fill: transparent; stroke: none; }
 .underlay { opacity: .9; pointer-events: none; }
 .bench-concrete rect { fill: #8a8f8a; }
 .bench.st-partial rect { fill: #d9a441; } .bench.st-pending rect { fill: #e0862b; } .bench.st-adopted rect { fill: #a23b2f; }
+.bench rect.hit, .bench.st-partial rect.hit, .bench.st-pending rect.hit, .bench.st-adopted rect.hit, .bench:hover rect.hit, .bench.sel rect.hit { fill: transparent; stroke: none; pointer-events: all; }
 .bench:hover rect:not(.hit), .bench.sel rect:not(.hit) { stroke: var(--ink); fill: var(--accent); }
 .key { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 10px 0 0; margin: 0; font-size: 12px; color: var(--muted); }
 .key li { display: flex; align-items: center; gap: 5px; } .key i { width: 14px; height: 7px; border-radius: 2px; display: inline-block; }
