@@ -22,7 +22,7 @@ const STEPS = [
   { n: "03", title: "Dedicate it", text: "Add a name or a message and choose how long you want to adopt it for. No payment step here for now." },
 ];
 
-function SectionDetail({ s, sub, statuses, onSub, onBench, onlyFree, setOnlyFree }: { s: Section; sub: string | null; statuses: Record<string, BenchState>; onSub: (id: string) => void; onBench: (id: string) => void; onlyFree: boolean; setOnlyFree: (v: boolean) => void; onBack: () => void }) {
+function SectionDetail({ s, sub, statuses, onSub, onBench, onlyFree, setOnlyFree, onBack }: { s: Section; sub: string | null; statuses: Record<string, BenchState>; onSub: (id: string) => void; onBench: (id: string) => void; onlyFree: boolean; setOnlyFree: (v: boolean) => void; onBack: () => void }) {
   const mine = BENCHES.filter((b) => b.section === s.id);
   const n = (st: BenchState) => mine.filter((b) => (statuses[b.id] || "available") === st).length;
   const st = (id: string) => statuses[id] || "available";
