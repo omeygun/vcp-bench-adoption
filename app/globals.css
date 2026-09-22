@@ -71,6 +71,7 @@ button { font: inherit; cursor: pointer; }
 .side-list li:hover { background: var(--green-100); }
 .side-list b, .side-detail > b { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: #fff; font-family: var(--font-display); font-weight: 600; flex: none; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
 .side-detail { padding: 14px; }
+.side-back { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 13px; margin-bottom: 10px; cursor: pointer; } .side-back:hover { background: var(--green-100); }
 .side-detail .thumb { width: 100%; height: 150px; background: var(--land); border-radius: 12px; margin-bottom: 12px; }
 .side-detail h3 { font-size: 20px; color: var(--green-900); margin: 8px 0 12px; }
 .subs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
@@ -83,15 +84,17 @@ button { font: inherit; cursor: pointer; }
 .side-list small { margin-left: auto; color: var(--muted); }
 /* svg map layers */
 .trail { fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
-.bench rect { fill: #6b4a2b; stroke: #fff; cursor: pointer; }
+.bench rect.half { fill: #6b4a2b; stroke: #fff; cursor: pointer; }
 .underlay { opacity: .9; pointer-events: none; }
-.bench-concrete rect { fill: #8a8f8a; }
-.bench.st-partial rect { fill: #d9a441; } .bench.st-pending rect { fill: #e0862b; } .bench.st-adopted rect { fill: #a23b2f; }
-.bench rect.hit, .bench.st-partial rect.hit, .bench.st-pending rect.hit, .bench.st-adopted rect.hit, .bench:hover rect.hit, .bench.sel rect.hit { fill: transparent; stroke: none; pointer-events: all; }
-.bench:hover rect:not(.hit), .bench.sel rect:not(.hit) { stroke: var(--ink); fill: var(--accent); }
+.bench-concrete rect.half { fill: #8a8f8a; }
+.bench rect.half.st-pending { fill: #e0862b; } .bench rect.half.st-adopted { fill: #a23b2f; }
+.bench rect.hit { fill: transparent; stroke: none; pointer-events: all; }
+.bench:hover rect.half, .bench.sel rect.half { stroke: var(--ink); stroke-width: 1px; }
+.side-num { fill: #fff; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; paint-order: stroke; stroke: rgba(0,0,0,.35); stroke-width: .6px; }
+.orient { display: flex; gap: 10px; align-items: center; margin: -4px 0 12px; } .side-diagram { width: 64px; height: 64px; flex: none; background: var(--land); border-radius: 10px; }
 .key { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 10px 0 0; margin: 0; font-size: 12px; color: var(--muted); }
 .key li { display: flex; align-items: center; gap: 5px; } .key i { width: 14px; height: 7px; border-radius: 2px; display: inline-block; }
-.k-available { background: #6b4a2b; } .k-partial { background: #d9a441; } .k-pending { background: #e0862b; } .k-adopted { background: #a23b2f; }
+.k-available { background: #6b4a2b; } .k-partial { background: linear-gradient(90deg, #6b4a2b 50%, #a23b2f 50%); } .k-pending { background: #e0862b; } .k-adopted { background: #a23b2f; }
 /* bench panel */
 .bench-panel { padding: 14px; font-size: 14px; } .bench-panel h3 { font-size: 20px; color: var(--green-900); margin: 0 0 4px; } .bench-panel .meta { color: var(--muted); margin: 0 0 12px; }
 .bench-panel .side { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: #fff; }

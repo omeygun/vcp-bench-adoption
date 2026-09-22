@@ -7,7 +7,7 @@ import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import { Flip } from "gsap/Flip";
 import { SplitText } from "gsap/SplitText";
 import ParkMap, { SECTIONS, BENCHES, SUBS, colorOf, letterOf, type Section, type BenchState } from "./ParkMap";
-import BenchPanel, { type PublicAdoption, benchStates } from "./BenchPanel";
+import BenchPanel, { type PublicAdoption, benchStates, sideStates } from "./BenchPanel";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger, ScrollToPlugin, Flip, SplitText);
 
@@ -22,7 +22,7 @@ const STEPS = [
   { n: "03", title: "Dedicate it", text: "Add a name or a message and choose how long you want to adopt it for. No payment step here for now." },
 ];
 
-function SectionDetail({ s, sub, statuses, onSub, onBench, onlyFree, setOnlyFree }: { s: Section; sub: string | null; statuses: Record<string, BenchState>; onSub: (id: string) => void; onBench: (id: string) => void; onlyFree: boolean; setOnlyFree: (v: boolean) => void }) {
+function SectionDetail({ s, sub, statuses, onSub, onBench, onlyFree, setOnlyFree }: { s: Section; sub: string | null; statuses: Record<string, BenchState>; onSub: (id: string) => void; onBench: (id: string) => void; onlyFree: boolean; setOnlyFree: (v: boolean) => void; onBack: () => void }) {
   const mine = BENCHES.filter((b) => b.section === s.id);
   const n = (st: BenchState) => mine.filter((b) => (statuses[b.id] || "available") === st).length;
   const st = (id: string) => statuses[id] || "available";
@@ -34,6 +34,7 @@ function SectionDetail({ s, sub, statuses, onSub, onBench, onlyFree, setOnlyFree
   const d = "M" + s.points.join("L") + "Z" + (s.holes || []).map((h) => "M" + h.join("L") + "Z").join("");
   return (
     <div className="side-detail">
+      <button className="side-back" onClick={onBack}>← {sub ? `Whole section ${letterOf(s.id)}` : "All sections"}</button>
       <svg className="thumb" viewBox={`${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`} aria-hidden>
         <path d={d} fill={colorOf(s.id)} fillRule="evenodd" stroke="#fff" strokeWidth={4} />
       </svg>
@@ -84,6 +85,7 @@ export default function Landing() {
   const [onlyFree, setOnlyFree] = useState(false);
   const [adoptions, setAdoptions] = useState<PublicAdoption[]>([]);
   const statuses = useMemo(() => benchStates(BENCHES, adoptions), [adoptions]);
+  const sides = useMemo(() => sideStates(BENCHES, adoptions), [adoptions]);
   const reload = () => fetch("/api/adoptions").then((r) => r.json()).then(setAdoptions).catch(() => {});
   useEffect(() => { reload(); }, []);
   const pick = (id: string | null) => { setActive(id); setActiveSub(null); setBench(null); };
@@ -200,9 +202,9 @@ export default function Landing() {
             </div>
             <div className="map-body">
               <ParkMap activeId={active} activeSub={activeSub} onSelect={(id) => (id === active && !activeSub && !bench ? pick(null) : pick(id))}
-                onSelectSub={(id) => { setBench(null); setActiveSub((cur) => (cur === id ? null : id)); }} statuses={statuses} activeBench={bench} onSelectBench={pickBench} underlay={underlay} />
+                onSelectSub={(id) => { setBench(null); setActiveSub((cur) => (cur === id ? null : id)); }} statuses={statuses} sides={sides} activeBench={bench} onSelectBench={pickBench} underlay={underlay} />
               <aside className="map-side">
-                {bench ? <BenchPanel benchId={bench} onBack={() => setBench(null)} onChanged={reload} /> : activeSection ? <SectionDetail s={activeSection} sub={activeSub} statuses={statuses} onSub={(id) => setActiveSub((cur) => (cur === id ? null : id))} onBench={pickBench} onlyFree={onlyFree} setOnlyFree={setOnlyFree} /> : (
+                {bench ? <BenchPanel benchId={bench} onBack={() => setBench(null)} onChanged={reload} /> : activeSection ? <SectionDetail s={activeSection} sub={activeSub} statuses={statuses} onSub={(id) => setActiveSub((cur) => (cur === id ? null : id))} onBench={pickBench} onlyFree={onlyFree} setOnlyFree={setOnlyFree} onBack={() => (activeSub ? setActiveSub(null) : pick(null))} /> : (
                   <ul className="side-list">
                     {SECTIONS.map((s) => (
                       <li key={s.id} onClick={() => pick(s.id)}>

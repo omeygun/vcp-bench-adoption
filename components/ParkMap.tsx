@@ -27,12 +27,12 @@ export const letterOf = (id: string) => String.fromCharCode(65 + SECTIONS.findIn
 
 export type BenchState = "available" | "partial" | "pending" | "adopted";
 type Props = { activeId: string | null; activeSub?: string | null; onSelect: (id: string | null) => void; onSelectSub?: (id: string) => void; labels?: boolean;
-  statuses?: Record<string, BenchState>; activeBench?: string | null; onSelectBench?: (id: string) => void; underlay?: boolean };
+  statuses?: Record<string, BenchState>; sides?: Record<string, ("available" | "pending" | "adopted")[]>; activeBench?: string | null; onSelectBench?: (id: string) => void; underlay?: boolean };
 
 /** D3 zoom-to-bounding-box map of the traced park layers (park, roads, water). */
-export default function ParkMap({ activeId, activeSub = null, onSelect, onSelectSub, labels = true, statuses, activeBench = null, onSelectBench, underlay = false }: Props) {
+export default function ParkMap({ activeId, activeSub = null, onSelect, onSelectSub, labels = true, statuses, sides, activeBench = null, onSelectBench, underlay = false }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const api = useRef<{ zoomTo: (id: string | null, sub: string | null, bench?: string | null) => void; labels: (on: boolean) => void; benches: (st: Record<string, BenchState> | undefined, sel: string | null) => void; underlay: (on: boolean) => void } | null>(null);
+  const api = useRef<{ zoomTo: (id: string | null, sub: string | null, bench?: string | null) => void; labels: (on: boolean) => void; benches: (st: Record<string, BenchState> | undefined, sd: Props["sides"], sel: string | null) => void; underlay: (on: boolean) => void } | null>(null);
   const onSelectBenchRef = useRef(onSelectBench);
   onSelectBenchRef.current = onSelectBench;
   const onSelectRef = useRef(onSelect);
@@ -90,7 +90,11 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
       .attr("transform", (d) => `translate(${T([d.x, d.y])}) rotate(${d.angle})`)
       .on("click", (event, d) => { event.stopPropagation(); (onSelectBenchRef.current || (() => onSelectRef.current(d.section)))(d.id); });
     const benchHits = benchG.append("rect").attr("class", "hit");      // generous invisible click target
-    const benchRects = benchG.append("rect").attr("rx", 0.6);
+    // one rect per plaque side: side 1 is the left half of the bench as drawn (before rotation), side 2 the right
+    const halves = benchG.selectAll("rect.half").data((d) => Array.from({ length: d.sides }, (_, i) => ({ bench: d, side: i + 1 }))).join("rect")
+      .attr("class", (h) => `half s${h.side}`).attr("rx", 0.6);
+    const sideNums = benchG.selectAll("text.side-num").data((d) => (d.sides === 2 ? [1, 2].map((side) => ({ bench: d, side })) : [])).join("text")
+      .attr("class", "side-num").text((h) => h.side);
     benchG.append("title").text((d) => `Bench ${d.id} · ${d.type === "concrete" ? "Concrete base" : "World's Fair"} · ${d.size} ft`);
     const benchLabels = benchG.append("text").attr("class", "bench-id").text((d) => d.id);
 
@@ -109,7 +113,11 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
       trails.attr("stroke-width", 2.4 * s).attr("stroke-dasharray", (d) => (d.t.dashed ? `${6 * s} ${4 * s}` : null));
       const bs = Math.max(0.45, s);                       // benches shrink with zoom but stay a visible rectangle
       benchHits.attr("x", (d) => -d.size * 1.2 * bs - 3 * s).attr("y", -7 * bs).attr("width", (d) => d.size * 2.4 * bs + 6 * s).attr("height", 14 * bs);
-      benchRects.attr("x", (d) => -d.size * 0.7 * bs).attr("y", -2.4 * bs).attr("width", (d) => d.size * 1.4 * bs).attr("height", 4.8 * bs).attr("stroke-width", 0.7 * bs);
+      halves.attr("x", (h) => -h.bench.size * 0.7 * bs + ((h.side - 1) * h.bench.size * 1.4 * bs) / h.bench.sides).attr("y", -2.4 * bs)
+        .attr("width", (h) => (h.bench.size * 1.4 * bs) / h.bench.sides).attr("height", 4.8 * bs).attr("stroke-width", 0.7 * bs);
+      const ppu0 = ((svgRef.current?.clientWidth || width) / width) * k;
+      sideNums.attr("x", (h) => -h.bench.size * 0.7 * bs + ((h.side - 0.5) * h.bench.size * 1.4 * bs) / 2).attr("y", 0.9 * bs)
+        .attr("font-size", Math.min(4.8 * bs * 0.8, 9 / ppu0)).attr("display", ppu0 >= 3 ? null : "none");
       const ppu = ((svgRef.current?.clientWidth || width) / width) * k;   // screen px per map unit
       benchLabels.attr("font-size", 10 / ppu).attr("y", -3.2 * bs).attr("display", ppu >= 1.5 ? null : "none");
     };
@@ -130,7 +138,10 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
     api.current = {
       labels: (on) => labelSel.attr("display", on ? null : "none"),
       underlay: (on) => { base.attr("display", on ? null : "none"); g.selectAll(".section").attr("fill-opacity", on ? 0.45 : null); },
-      benches: (st, sel) => benchG.attr("class", (d) => `bench bench-${d.type} st-${st?.[d.id] || "available"}${d.id === sel ? " sel" : ""}`),
+      benches: (st, sd, sel) => {
+        benchG.attr("class", (d) => `bench bench-${d.type} st-${st?.[d.id] || "available"}${d.id === sel ? " sel" : ""}`);
+        halves.attr("class", (h) => `half s${h.side} st-${sd?.[h.bench.id]?.[h.side - 1] || "available"}`);
+      },
       zoomTo: (id, sub, bench) => {
         current = id;
         sections.classed("active", (d) => d.id === id);
@@ -152,7 +163,7 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
 
   useEffect(() => { api.current?.zoomTo(activeId, activeSub, activeBench); }, [activeId, activeSub, activeBench]);
   useEffect(() => { api.current?.labels(labels); }, [labels]);
-  useEffect(() => { api.current?.benches(statuses, activeBench); }, [statuses, activeBench]);
+  useEffect(() => { api.current?.benches(statuses, sides, activeBench); }, [statuses, sides, activeBench]);
   useEffect(() => { api.current?.underlay(underlay); }, [underlay]);
 
   return <svg ref={svgRef} className="park-map" role="img" aria-label="Map of Van Cortlandt Park sections" />;

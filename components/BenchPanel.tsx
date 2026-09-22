@@ -4,7 +4,7 @@ import type { BenchState } from "./ParkMap";
 
 export type PublicAdoption = { id: string; benchId: string; side: number; status: string; honoree?: string; plaque?: string; termStart?: string; termEnd?: string };
 type SideInfo = { side: number; state: "available" | "pending" | "adopted"; current: PublicAdoption[]; history: PublicAdoption[] };
-type Detail = { bench: { id: string; type: string; size: number; sides: number; region: string }; state: BenchState; sides: SideInfo[]; openReports: { id: string; category: string; status: string; createdAt: string }[] };
+type Detail = { bench: { id: string; type: string; size: number; sides: number; region: string; angle: number }; state: BenchState; sides: SideInfo[]; openReports: { id: string; category: string; status: string; createdAt: string }[] };
 
 /** Same rule as lib/adoptions.benchState, computed client-side from the public adoption list. */
 export function benchStates(benches: { id: string; sides: number }[], adoptions: PublicAdoption[]) {
@@ -14,6 +14,27 @@ export function benchStates(benches: { id: string; sides: number }[], adoptions:
     out[b.id] = states.every((s) => s === "available") ? "available" : states.some((s) => s === "available") ? "partial" : states.some((s) => s === "adopted") ? "adopted" : "pending";
   }
   return out;
+}
+export function sideStates(benches: { id: string; sides: number }[], adoptions: PublicAdoption[]) {
+  const out: Record<string, ("available" | "pending" | "adopted")[]> = {};
+  for (const b of benches) out[b.id] = Array.from({ length: b.sides }, (_, i) => { const mine = adoptions.filter((a) => a.benchId === b.id && a.side === i + 1); return mine.some((a) => a.status === "installed") ? "adopted" : mine.length ? "pending" : "available"; });
+  return out;
+}
+/** Which half is which, drawn with the bench's real orientation on the map (north up). */
+export function SideDiagram({ angle, sides, highlight }: { angle: number; sides: number; highlight?: number }) {
+  return (
+    <svg className="side-diagram" viewBox="-30 -30 60 60" aria-label="Bench orientation">
+      <g transform={`rotate(${angle})`}>
+        {Array.from({ length: sides }, (_, i) => (
+          <g key={i}>
+            <rect x={-22 + (i * 44) / sides} y={-7} width={44 / sides} height={14} rx={1.5} fill={highlight === i + 1 ? "#e0862b" : "#6b4a2b"} stroke="#fff" strokeWidth={1.5} />
+            {sides === 2 && <text x={-22 + ((i + 0.5) * 44) / 2} y={0} transform={`rotate(${-angle} ${-22 + ((i + 0.5) * 44) / 2} 0)`} fontSize={9} fontWeight={700} fill="#fff" textAnchor="middle" dominantBaseline="central">{i + 1}</text>}
+          </g>
+        ))}
+      </g>
+      <text x={0} y={-24} fontSize={6} fill="#5b6a63" textAnchor="middle">N</text>
+    </svg>
+  );
 }
 const TYPE = { "worlds-fair": "World's Fair", concrete: "Concrete base" } as Record<string, string>;
 const fmt = (d?: string) => (d ? new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "");
@@ -27,8 +48,10 @@ export default function BenchPanel({ benchId, onBack, onChanged }: { benchId: st
   const done = () => { setMode(null); load(); onChanged(); };
   return (
     <div className="bench-panel">
+      <button className="side-back" onClick={mode ? () => setMode(null) : onBack}>← {mode ? `Bench ${d.bench.id}` : "Back to section"}</button>
       <h3>Bench {d.bench.id}</h3>
       <p className="meta">{TYPE[d.bench.type]} · {d.bench.size} ft · {d.bench.sides === 2 ? "two plaque sides" : "one plaque side"} · region {d.bench.region}</p>
+      {d.bench.sides === 2 && <div className="orient"><SideDiagram angle={d.bench.angle} sides={2} highlight={mode?.kind === "request" ? mode.side : undefined} /><small>Side numbers match the map when zoomed in. Each side of an 8 ft bench takes its own plaque.</small></div>}
       {mode?.kind === "request" ? <RequestForm benchId={benchId} side={mode.side} onDone={done} onCancel={() => setMode(null)} /> :
        mode?.kind === "report" ? <ReportForm benchId={benchId} open={d.openReports} onDone={done} onCancel={() => setMode(null)} /> : (
         <>
@@ -49,7 +72,6 @@ export default function BenchPanel({ benchId, onBack, onChanged }: { benchId: st
           <div className="report-link">
             {d.openReports.length > 0 && <div><small>{d.openReports.length} open report{d.openReports.length > 1 ? "s" : ""} on this bench ({d.openReports.map((r) => r.category.replace("_", " ")).join(", ")}).</small></div>}
             <button className="linkish" onClick={() => setMode({ kind: "report" })}>Report a problem with this bench</button>
-            <span> · </span><button className="linkish" onClick={onBack}>Back to section</button>
           </div>
         </>
       )}
