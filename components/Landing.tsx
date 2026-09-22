@@ -22,9 +22,11 @@ const STEPS = [
   { n: "03", title: "Dedicate it", text: "Add a name or a message and choose how long you want to adopt it for. No payment step here for now." },
 ];
 
-function SectionDetail({ s, sub, statuses, onSub }: { s: Section; sub: string | null; statuses: Record<string, BenchState>; onSub: (id: string) => void }) {
+function SectionDetail({ s, sub, statuses, onSub, onBench, onlyFree, setOnlyFree }: { s: Section; sub: string | null; statuses: Record<string, BenchState>; onSub: (id: string) => void; onBench: (id: string) => void; onlyFree: boolean; setOnlyFree: (v: boolean) => void }) {
   const mine = BENCHES.filter((b) => b.section === s.id);
   const n = (st: BenchState) => mine.filter((b) => (statuses[b.id] || "available") === st).length;
+  const st = (id: string) => statuses[id] || "available";
+  const listed = mine.filter((b) => (!sub || b.sub === sub) && (!onlyFree || st(b.id) === "available" || st(b.id) === "partial")).sort((a, b) => parseInt(a.id) - parseInt(b.id));
   const subs = SUBS.filter((d) => d.section === s.id);
   const xs = s.points.map((p) => p[0]), ys = s.points.map((p) => p[1]);
   const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
@@ -46,6 +48,14 @@ function SectionDetail({ s, sub, statuses, onSub }: { s: Section; sub: string | 
           ))}
         </div>
       )}
+      <div className="bench-list-head">
+        <b>{sub ? `Benches in ${sub}` : "Benches"} <small>({listed.length})</small></b>
+        <label className="toggle"><input type="checkbox" checked={onlyFree} onChange={(e) => setOnlyFree(e.target.checked)} /> free only</label>
+      </div>
+      <div className="bench-chips">
+        {listed.map((b) => <button key={b.id} className={`chip st-${st(b.id)}`} title={`${b.size} ft ${b.type === "concrete" ? "concrete" : "World's Fair"} · ${st(b.id)}`} onClick={() => onBench(b.id)}>{b.id}</button>)}
+        {listed.length === 0 && <small>No benches match.</small>}
+      </div>
       <dl>
         <dt>Benches</dt><dd>{mine.length}</dd>
         <dt>8 ft (two plaque sides)</dt><dd>{mine.filter((b) => b.size === 8).length}</dd>
@@ -58,7 +68,7 @@ function SectionDetail({ s, sub, statuses, onSub }: { s: Section; sub: string | 
       <ul className="key">
         <li><i className="k-available" /> available</li><li><i className="k-partial" /> one side free</li><li><i className="k-pending" /> requested</li><li><i className="k-adopted" /> adopted</li>
       </ul>
-      <p className="tbd">Click a bench to see its plaques or request one. 8 ft benches have two plaque sides.</p>
+      <p className="tbd">Tap a bench number above or on the map to see its plaques or request one. 8 ft benches have two plaque sides.</p>
     </div>
   );
 }
@@ -69,6 +79,9 @@ export default function Landing() {
   const [active, setActive] = useState<string | null>(null);
   const [activeSub, setActiveSub] = useState<string | null>(null);
   const [bench, setBench] = useState<string | null>(null);
+  const [underlay, setUnderlay] = useState(false);
+  const [benchQuery, setBenchQuery] = useState("");
+  const [onlyFree, setOnlyFree] = useState(false);
   const [adoptions, setAdoptions] = useState<PublicAdoption[]>([]);
   const statuses = useMemo(() => benchStates(BENCHES, adoptions), [adoptions]);
   const reload = () => fetch("/api/adoptions").then((r) => r.json()).then(setAdoptions).catch(() => {});
@@ -175,15 +188,21 @@ export default function Landing() {
             <div className="map-bar">
               <strong>{bench ? `Bench ${bench}` : activeSection ? `${activeSub || letterOf(activeSection.id)} · ${activeSection.name}` : "Van Cortlandt Park"}</strong>
               <div className="map-actions">
+                <form className="goto" onSubmit={(e) => { e.preventDefault(); const id = benchQuery.trim().toUpperCase(); if (BENCHES.some((b) => b.id === id)) { pickBench(id); setBenchQuery(""); } else setBenchQuery("?"); }}>
+                  <input value={benchQuery} onChange={(e) => { const v = e.target.value; const id = v.trim().toUpperCase(); if (BENCHES.some((b) => b.id === id)) { pickBench(id); setBenchQuery(""); } else setBenchQuery(v); }} placeholder="Bench # e.g. 12A" aria-label="Go to bench" list="bench-ids" />
+                  <datalist id="bench-ids">{BENCHES.map((b) => <option key={b.id} value={b.id} />)}</datalist>
+                  <button type="submit">Go</button>
+                </form>
+                <label className="toggle"><input type="checkbox" checked={underlay} onChange={(e) => setUnderlay(e.target.checked)} /> Original map</label>
                 {active && <button onClick={() => (bench ? setBench(null) : activeSub ? setActiveSub(null) : pick(null))}>{bench ? "Back" : activeSub ? "Whole section" : "All sections"}</button>}
                 <button onClick={toggleExpand}>{expanded ? "Close" : "Expand"}</button>
               </div>
             </div>
             <div className="map-body">
               <ParkMap activeId={active} activeSub={activeSub} onSelect={(id) => (id === active && !activeSub && !bench ? pick(null) : pick(id))}
-                onSelectSub={(id) => { setBench(null); setActiveSub((cur) => (cur === id ? null : id)); }} statuses={statuses} activeBench={bench} onSelectBench={pickBench} />
+                onSelectSub={(id) => { setBench(null); setActiveSub((cur) => (cur === id ? null : id)); }} statuses={statuses} activeBench={bench} onSelectBench={pickBench} underlay={underlay} />
               <aside className="map-side">
-                {bench ? <BenchPanel benchId={bench} onBack={() => setBench(null)} onChanged={reload} /> : activeSection ? <SectionDetail s={activeSection} sub={activeSub} statuses={statuses} onSub={(id) => setActiveSub((cur) => (cur === id ? null : id))} /> : (
+                {bench ? <BenchPanel benchId={bench} onBack={() => setBench(null)} onChanged={reload} /> : activeSection ? <SectionDetail s={activeSection} sub={activeSub} statuses={statuses} onSub={(id) => setActiveSub((cur) => (cur === id ? null : id))} onBench={pickBench} onlyFree={onlyFree} setOnlyFree={setOnlyFree} /> : (
                   <ul className="side-list">
                     {SECTIONS.map((s) => (
                       <li key={s.id} onClick={() => pick(s.id)}>

@@ -8,7 +8,7 @@ import subData from "../data/subsections.json";
 type Pt = [number, number];
 export type Section = { id: string; name: string; points: Pt[]; holes: Pt[][]; centroid: Pt };
 type Layers = {
-  meta: { viewBox: [number, number, number, number] };
+  meta: { viewBox: [number, number, number, number]; image: string; imageWidth: number; imageHeight: number };
   sections: Section[];
   water: { id: string; points: Pt[] }[];
   roads: { id: string; outer: Pt[]; holes: Pt[][] }[];
@@ -27,12 +27,12 @@ export const letterOf = (id: string) => String.fromCharCode(65 + SECTIONS.findIn
 
 export type BenchState = "available" | "partial" | "pending" | "adopted";
 type Props = { activeId: string | null; activeSub?: string | null; onSelect: (id: string | null) => void; onSelectSub?: (id: string) => void; labels?: boolean;
-  statuses?: Record<string, BenchState>; activeBench?: string | null; onSelectBench?: (id: string) => void };
+  statuses?: Record<string, BenchState>; activeBench?: string | null; onSelectBench?: (id: string) => void; underlay?: boolean };
 
 /** D3 zoom-to-bounding-box map of the traced park layers (park, roads, water). */
-export default function ParkMap({ activeId, activeSub = null, onSelect, onSelectSub, labels = true, statuses, activeBench = null, onSelectBench }: Props) {
+export default function ParkMap({ activeId, activeSub = null, onSelect, onSelectSub, labels = true, statuses, activeBench = null, onSelectBench, underlay = false }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const api = useRef<{ zoomTo: (id: string | null, sub: string | null) => void; labels: (on: boolean) => void; benches: (st: Record<string, BenchState> | undefined, sel: string | null) => void } | null>(null);
+  const api = useRef<{ zoomTo: (id: string | null, sub: string | null) => void; labels: (on: boolean) => void; benches: (st: Record<string, BenchState> | undefined, sel: string | null) => void; underlay: (on: boolean) => void } | null>(null);
   const onSelectBenchRef = useRef(onSelectBench);
   onSelectBenchRef.current = onSelectBench;
   const onSelectRef = useRef(onSelect);
@@ -49,6 +49,10 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
     const svg = d3.select(svgRef.current!).attr("viewBox", [0, 0, width, height].join(" "));
     svg.selectAll("*").remove();
     const g = svg.append("g");
+
+    // original VCPA map as an optional underlay, aligned to the same pixel frame the layers were traced in
+    const base = g.append("image").attr("href", "/vcp-map.jpg").attr("x", -vx).attr("y", -vy)
+      .attr("width", L.meta.imageWidth).attr("height", L.meta.imageHeight).attr("preserveAspectRatio", "none").attr("class", "underlay").attr("display", "none");
 
     const roadsG = g.append("g");
     const roads = roadsG.selectAll("path").data(L.roads).join("path")
@@ -85,6 +89,7 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
       .attr("class", (d) => `bench bench-${d.type}`)
       .attr("transform", (d) => `translate(${T([d.x, d.y])}) rotate(${d.angle})`)
       .on("click", (event, d) => { event.stopPropagation(); (onSelectBenchRef.current || (() => onSelectRef.current(d.section)))(d.id); });
+    const benchHits = benchG.append("rect").attr("class", "hit");      // generous invisible click target
     const benchRects = benchG.append("rect").attr("rx", 0.6);
     benchG.append("title").text((d) => `Bench ${d.id} · ${d.type === "concrete" ? "Concrete base" : "World's Fair"} · ${d.size} ft`);
     const benchLabels = benchG.append("text").attr("class", "bench-id").text((d) => d.id);
@@ -103,6 +108,7 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
       subLabels.attr("font-size", 22 * s).attr("display", k > 7 ? "none" : null);
       trails.attr("stroke-width", 2.4 * s).attr("stroke-dasharray", (d) => (d.t.dashed ? `${6 * s} ${4 * s}` : null));
       const bs = Math.max(0.45, s);                       // benches shrink with zoom but stay a visible rectangle
+      benchHits.attr("x", (d) => -d.size * 1.2 * bs - 3 * s).attr("y", -7 * bs).attr("width", (d) => d.size * 2.4 * bs + 6 * s).attr("height", 14 * bs);
       benchRects.attr("x", (d) => -d.size * 0.7 * bs).attr("y", -2.4 * bs).attr("width", (d) => d.size * 1.4 * bs).attr("height", 4.8 * bs).attr("stroke-width", 0.7 * bs);
       const ppu = ((svgRef.current?.clientWidth || width) / width) * k;   // screen px per map unit
       benchLabels.attr("font-size", 10 / ppu).attr("y", -3.2 * bs).attr("display", ppu >= 1.5 ? null : "none");
@@ -123,6 +129,7 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
     };
     api.current = {
       labels: (on) => labelSel.attr("display", on ? null : "none"),
+      underlay: (on) => { base.attr("display", on ? null : "none"); g.selectAll(".section").attr("fill-opacity", on ? 0.45 : null); },
       benches: (st, sel) => benchG.attr("class", (d) => `bench bench-${d.type} st-${st?.[d.id] || "available"}${d.id === sel ? " sel" : ""}`),
       zoomTo: (id, sub) => {
         current = id;
@@ -144,6 +151,7 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
   useEffect(() => { api.current?.zoomTo(activeId, activeSub); }, [activeId, activeSub]);
   useEffect(() => { api.current?.labels(labels); }, [labels]);
   useEffect(() => { api.current?.benches(statuses, activeBench); }, [statuses, activeBench]);
+  useEffect(() => { api.current?.underlay(underlay); }, [underlay]);
 
   return <svg ref={svgRef} className="park-map" role="img" aria-label="Map of Van Cortlandt Park sections" />;
 }
