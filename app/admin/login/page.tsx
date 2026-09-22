@@ -1,19 +1,21 @@
 "use client";
 import { useState } from "react";
 export default function Login() {
-  const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
-  const expired = typeof location !== "undefined" && location.search.includes("expired");
+  const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   return (
     <main className="login">
       <h1 style={{ fontSize: 28, color: "var(--green-900)" }}>VCP Benches · Staff sign-in</h1>
-      <p style={{ color: "var(--muted)" }}>Enter your staff email and we&apos;ll send a one-time sign-in link.</p>
-      {expired && !msg && <p style={{ color: "#a23b2f" }}>That link expired or was already used. Request a new one.</p>}
-      <form onSubmit={async (e) => { e.preventDefault(); setBusy(true); const email = new FormData(e.currentTarget).get("email"); const r = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }); const j = await r.json(); setMsg(j.message || j.error); setBusy(false); }}>
-        <input name="email" type="email" required placeholder="you@vancortlandt.org" />
-        <button className="btn primary" disabled={busy}>{busy ? "Sending…" : "Send sign-in link"}</button>
+      <form onSubmit={async (e) => { e.preventDefault(); setBusy(true); setErr(null); const f = new FormData(e.currentTarget);
+        const r = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: f.get("email"), password: f.get("password") }) });
+        const j = await r.json().catch(() => ({})); setBusy(false);
+        if (!r.ok) return setErr(j.error || "Sign-in failed");
+        location.href = j.mustChange ? "/admin/staff?change=1" : "/admin"; }}>
+        <input name="email" type="email" required autoComplete="username" placeholder="you@vancortlandt.org" />
+        <input name="password" type="password" required autoComplete="current-password" placeholder="Password" />
+        <button className="btn primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
       </form>
-      {msg && <p>{msg}</p>}
-      {process.env.NODE_ENV !== "production" && <p style={{ color: "var(--muted)", fontSize: 13 }}>Dev: without RESEND_API_KEY the link is printed in the server console.</p>}
+      {err && <p style={{ color: "#a23b2f" }}>{err}</p>}
+      <p style={{ color: "var(--muted)", fontSize: 13 }}>Forgot your password? Ask another admin to reset it from the Staff page.</p>
     </main>
   );
 }

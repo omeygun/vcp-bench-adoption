@@ -67,15 +67,33 @@ export function WaiverRevoke({ codeHint }: { codeHint: string }) {
   return <span className="row"><input placeholder={`full code ending ${codeHint.slice(-4)}`} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={12} style={{ width: 150 }} /><button className="btn ghost" disabled={busy || code.length !== 12} onClick={() => run(() => call(`/api/admin/waivers/${code}`, "DELETE"))}>Revoke</button></span>;
 }
 
-export function StaffForm({ emails, me }: { emails: string[]; me: string }) {
+export function StaffForm({ staff, me }: { staff: { email: string; hasPassword: boolean; mustChange: boolean }[]; me: string }) {
   const { busy, err, run } = useAction();
+  const [pw, setPw] = useState("");
+  const gen = () => setPw(Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"[b % 52]).join(""));
   return (
     <div>
-      <ul style={{ padding: 0, listStyle: "none" }}>{emails.map((e) => <li key={e} style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 0" }}>{e}{e === me && <small className="muted">(you)</small>}{e !== me && emails.length > 1 && <button className="btn ghost" disabled={busy} onClick={() => run(() => call("/api/admin/staff", "DELETE", { email: e }))}>Remove</button>}</li>)}</ul>
-      <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); const el = e.currentTarget; run(async () => { await call("/api/admin/staff", "POST", { email: f.get("email") }); el.reset(); }); }} style={{ display: "flex", gap: 8 }}>
-        <input name="email" type="email" required placeholder="new.staff@vancortlandt.org" /><button className="btn primary" disabled={busy}>Add</button>
+      <ul style={{ padding: 0, listStyle: "none" }}>{staff.map((s) => <li key={s.email} style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 0" }}>{s.email}{s.email === me && <small className="muted">(you)</small>}{!s.hasPassword && <small className="muted">(no password yet)</small>}{s.mustChange && s.hasPassword && <small className="muted">(temporary password)</small>}{s.email !== me && staff.length > 1 && <button className="btn ghost" disabled={busy} onClick={() => run(() => call("/api/admin/staff", "DELETE", { email: s.email }))}>Remove</button>}</li>)}</ul>
+      <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); const el = e.currentTarget; run(async () => { await call("/api/admin/staff", "POST", { email: f.get("email"), password: pw }); el.reset(); setPw(""); }); }} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input name="email" type="email" required placeholder="colleague@vancortlandt.org" />
+        <input value={pw} onChange={(e) => setPw(e.target.value)} required minLength={10} placeholder="temporary password (10+ chars)" style={{ width: 240 }} />
+        <button type="button" className="btn ghost" onClick={gen}>Generate</button>
+        <button className="btn primary" disabled={busy}>Add / reset</button>
       </form>
+      {pw && <p className="muted" style={{ fontSize: 13 }}>Share this password with them through a private channel; it is not emailed.</p>}
       {err && <p style={{ color: "#a23b2f" }}>{err}</p>}
     </div>
+  );
+}
+export function ChangePassword() {
+  const { busy, err, run } = useAction();
+  const [ok, setOk] = useState(false);
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); const el = e.currentTarget; run(async () => { await call("/api/admin/password", "POST", { current: f.get("current"), next: f.get("next") }); el.reset(); setOk(true); }); }} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <input name="current" type="password" required autoComplete="current-password" placeholder="current password" />
+      <input name="next" type="password" required minLength={10} autoComplete="new-password" placeholder="new password (10+ chars)" />
+      <button className="btn primary" disabled={busy}>Change</button>
+      {ok && <span className="muted">Changed.</span>}{err && <span style={{ color: "#a23b2f" }}>{err}</span>}
+    </form>
   );
 }

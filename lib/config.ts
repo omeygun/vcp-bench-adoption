@@ -2,7 +2,7 @@ import { getStore } from "./store";
 export const DEFAULTS = {
   PRICING: { adoptCents: 350000 },                          // placeholder until VCPA confirms
   REMINDERS: { offsetsDays: [-365, -180, -90, -30, -14, 0, 30], channels: ["email"] as string[] },
-  STAFF: { emails: (process.env.STAFF_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) },
+  STAFF: { staff: [] as { email: string; hash?: string; createdAt?: string; mustChange?: boolean }[] },
 };
 export type ConfigName = keyof typeof DEFAULTS;
 export async function getConfig<N extends ConfigName>(name: N): Promise<(typeof DEFAULTS)[N]> {

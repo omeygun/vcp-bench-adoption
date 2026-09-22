@@ -1,8 +1,13 @@
-import { getConfig } from "@/lib/config";
-import { getSession } from "@/lib/auth";
-import { StaffForm } from "@/components/admin/Actions";
-export default async function Staff() {
-  const { emails } = await getConfig("STAFF");
-  const me = (await getSession())?.email;
-  return (<><h1>Staff</h1><p className="muted">Only these addresses can request a sign-in link.</p><div className="card"><StaffForm emails={emails} me={me || ""} /></div></>);
+import { getSession, staffList } from "@/lib/auth";
+import { StaffForm, ChangePassword } from "@/components/admin/Actions";
+export default async function Staff({ searchParams }: { searchParams: Promise<{ change?: string }> }) {
+  const { change } = await searchParams;
+  const staff = (await staffList()).map((s) => ({ email: s.email, hasPassword: !!s.hash, mustChange: !!s.mustChange }));
+  const me = (await getSession())?.email || "";
+  return (<>
+    <h1>Staff</h1>
+    {change && <p style={{ color: "#a23b2f" }}>You signed in with a temporary password. Please set your own below.</p>}
+    <div className="card"><h2 style={{ marginTop: 0 }}>Your password</h2><ChangePassword /></div>
+    <div className="card"><h2 style={{ marginTop: 0 }}>Staff accounts</h2><p className="muted">Add a colleague with a temporary password, or type an existing email to reset theirs. They should change it after signing in.</p><StaffForm staff={staff} me={me} /></div>
+  </>);
 }

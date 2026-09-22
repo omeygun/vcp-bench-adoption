@@ -180,12 +180,13 @@ Deferred: photo upload if VCPA is happy with description-only at launch; a publi
 ## Admin side (added)
 
 ### Login
-- **Auth.js (NextAuth v5)** with the **Resend email provider**: staff enter their email, get a magic link, no passwords
-  to store or reset. Sign-in is allowed only for emails in `CONFIG / STAFF` (`{ emails: [...] }`), editable by an
-  existing admin. JWT session cookie, 30-day expiry.
+- Email + password. Staff records live in `CONFIG / STAFF` as `{ email, hash }` with Node's built-in `scrypt`;
+  no auth library, no email dependency for getting in. Signed session cookie (HMAC, `AUTH_SECRET`), 30-day expiry.
+- First admin bootstraps from `ADMIN_EMAIL` / `ADMIN_PASSWORD` on the first login; afterwards admins add colleagues
+  with a temporary password from `/admin/staff`, and everyone changes their own password there. Forgotten password:
+  another admin resets it. Self-service reset by email can be added once Resend is in place.
 - Everything under `/admin/**` and every admin route checks the session. The `x-admin-key` header stays as a
   machine key for curl and scripts only; cron and Stripe keep their own secrets.
-- Env: `AUTH_SECRET`, `AUTH_RESEND_KEY`, `AUTH_URL`.
 
 ### Pages (`app/admin/**`, server components + the existing routes)
 | Page | Shows |

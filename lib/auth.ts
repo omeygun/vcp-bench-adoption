@@ -1,8 +1,6 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import { getStore } from "./store";
-import { getConfig } from "./config";
-import { sendEmail, SITE } from "./email";
+import { getConfig, setConfig } from "./config";
 import { HttpError } from "./http";
 
 const SECRET = process.env.AUTH_SECRET || "dev-secret-change-me";
@@ -23,23 +21,42 @@ export function readSession(value?: string | null): { email: string } | null {
 }
 export async function getSession() { return readSession((await cookies()).get(COOKIE)?.value); }
 
-export async function isStaff(email: string) { return (await getConfig("STAFF")).emails.includes(email.toLowerCase()); }
-
-/** Magic link: LOGIN#<token> item, 15 minutes, single use. */
-export async function startLogin(email: string) {
-  email = email.toLowerCase();
-  if (!(await isStaff(email))) return;                       // silent: don't reveal the allowlist
-  const token = randomBytes(24).toString("base64url");
-  await getStore().put({ PK: `LOGIN#${token}`, SK: "META", email, ttl: Math.floor(Date.now() / 1000) + 900, createdAt: new Date().toISOString() });
-  const url = `${SITE}/api/admin/verify?t=${token}`;
-  await sendEmail({ to: email, subject: "Your VCP Benches admin sign-in link", text: `Sign in: ${url}\nThis link works once and expires in 15 minutes.`, html: `<p><a href="${url}">Sign in to VCP Benches admin</a></p><p>This link works once and expires in 15 minutes.</p>` });
+export type Staff = { email: string; hash?: string; createdAt?: string; mustChange?: boolean };
+export async function staffList(): Promise<Staff[]> {
+  const v = (await getConfig("STAFF")) as { staff?: Staff[]; emails?: string[] };
+  return v.staff?.length ? v.staff : (v.emails || []).map((email) => ({ email }));   // tolerate the old allowlist shape
 }
-export async function finishLogin(token: string) {
-  const store = getStore();
-  const item = await store.get(`LOGIN#${token}`, "META");
-  if (!item || Number(item.ttl) * 1000 < Date.now() || item.usedAt) return null;
-  await store.update(item.PK, item.SK, { usedAt: new Date().toISOString() }, { attrNotExists: "usedAt" });
-  return makeSession(String(item.email));
+export async function isStaff(email: string) { return (await staffList()).some((s) => s.email === email.toLowerCase()); }
+
+/** scrypt, Node built-in. Stored as salt:hash (hex). */
+export function hashPassword(pw: string) { const salt = randomBytes(16).toString("hex"); return `${salt}:${scryptSync(pw, salt, 64).toString("hex")}`; }
+export function checkPassword(pw: string, stored?: string) {
+  if (!stored) return false;
+  const [salt, hash] = stored.split(":"); if (!salt || !hash) return false;
+  const got = scryptSync(pw, salt, 64); const want = Buffer.from(hash, "hex");
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+export const passwordOk = (pw: unknown): pw is string => typeof pw === "string" && pw.length >= 10 && pw.length <= 200;
+
+export async function setStaffPassword(email: string, password: string, opts: { mustChange?: boolean } = {}) {
+  email = email.toLowerCase();
+  const list = await staffList();
+  const cur = list.find((s) => s.email === email);
+  const rec: Staff = { email, hash: hashPassword(password), createdAt: cur?.createdAt || new Date().toISOString(), mustChange: opts.mustChange ?? false };
+  await setConfig("STAFF", { staff: [...list.filter((s) => s.email !== email), rec] });
+  return rec;
+}
+export async function removeStaff(email: string) { await setConfig("STAFF", { staff: (await staffList()).filter((s) => s.email !== email.toLowerCase()) }); }
+
+/** Email + password -> session cookie value, or null. First-ever login can bootstrap from ADMIN_EMAIL/ADMIN_PASSWORD. */
+export async function login(email: string, password: string) {
+  email = email.toLowerCase();
+  let list = await staffList();
+  if (!list.some((s) => s.hash) && process.env.ADMIN_EMAIL?.toLowerCase() === email && process.env.ADMIN_PASSWORD && password === process.env.ADMIN_PASSWORD) {
+    await setStaffPassword(email, password); list = await staffList();
+  }
+  const rec = list.find((s) => s.email === email);
+  return rec && checkPassword(password, rec.hash) ? { session: makeSession(email), mustChange: !!rec.mustChange } : null;
 }
 
 /** Route guard: session cookie, or x-admin-key for scripts. */

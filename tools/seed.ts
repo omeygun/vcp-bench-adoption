@@ -6,6 +6,7 @@ import { createAdoption, patchAdoption } from "../lib/adoptions";
 import { createReport } from "../lib/reports";
 import { createWaiver } from "../lib/waivers";
 import { BENCHES } from "../lib/benches";
+import { setStaffPassword } from "../lib/auth";
 import { addYears } from "../lib/ids";
 
 process.env.RESEND_API_KEY = "";   // never email from a seed
@@ -17,8 +18,8 @@ const PLAQUES = ["In loving memory of\n{n}\nwho walked these trails every mornin
 
 async function main() {
   const store = getStore();
-  const staff = (process.env.STAFF_EMAILS || "matinkositchutima@gmail.com").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  await setConfig("STAFF", { emails: staff });
+  const staffEmail = process.env.ADMIN_EMAIL || "matinkositchutima@gmail.com", staffPw = process.env.ADMIN_PASSWORD || "changeme-please-1";
+  await setStaffPassword(staffEmail, staffPw, { mustChange: true }); const staff = [`${staffEmail} (password: ${staffPw})`];
   await setConfig("PRICING", { adoptCents: 350000 });
   const benches = [...BENCHES].sort(() => rnd() - 0.5).slice(0, 55);
   let n = 0;

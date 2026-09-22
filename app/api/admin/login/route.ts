@@ -1,3 +1,13 @@
-import { body, handle, ip, json, rateLimit, isEmail, bad } from "@/lib/http";
-import { startLogin } from "@/lib/auth";
-export const POST = handle(async (req) => { rateLimit("login:" + ip(req), 10, 3600_000); const { email } = await body(req); if (!isEmail(email)) return bad("Email required", 422); await startLogin(email); return json({ ok: true, message: "If that address is on the staff list, a sign-in link is on its way." }); });
+import { NextResponse } from "next/server";
+import { body, handle, ip, rateLimit, isEmail, bad } from "@/lib/http";
+import { COOKIE, login } from "@/lib/auth";
+export const POST = handle(async (req) => {
+  rateLimit("login:" + ip(req), 10, 900_000);
+  const { email, password } = await body(req);
+  if (!isEmail(email) || typeof password !== "string") return bad("Email and password required", 422);
+  const r = await login(email, password);
+  if (!r) return bad("Wrong email or password", 401);
+  const res = NextResponse.json({ ok: true, mustChange: r.mustChange });
+  res.cookies.set(COOKIE, r.session, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 30 * 86400 });
+  return res;
+});
