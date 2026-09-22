@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Van Cortlandt Park – Bench Adoption Map</title>
+<style>
+  :root {
+    --green-900: #2f6b4f; --green-100: #e6f1ea; --ink: #1f2a24; --muted: #5d6b63;
+    --panel: #fff; --line: #d7e2db; --accent: #e0862b;
+    --land: #dcebd6; --road: #d7dad6; --road-edge: #bfc5c0; --water: #8fb8e6; --water-edge: #6f9fd6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink); background: var(--green-100); }
+  header { background: var(--green-900); color: #fff; padding: 14px 24px; display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 22px; letter-spacing: .06em; text-transform: uppercase; }
+  header span { opacity: .8; font-size: 14px; }
+  main { display: grid; grid-template-columns: 1fr 340px; gap: 16px; padding: 16px; height: calc(100% - 54px); }
+  #map-wrap { background: var(--land); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; min-height: 0; }
+  #map-wrap svg { width: 100%; height: 100%; display: block; cursor: grab; }
+  #map-wrap svg:active { cursor: grabbing; }
+  .section { stroke: #fff; stroke-width: 2; stroke-linejoin: round; cursor: pointer; transition: filter .15s; }
+  .section:hover, .section.hover { filter: brightness(1.08); }
+  .section.active { stroke: var(--accent); stroke-width: 4; }
+  .road { fill: var(--road); stroke: var(--road-edge); stroke-linejoin: round; }
+  .road-arrow { fill: #2f6b4f; stroke: #fff; stroke-width: .8; pointer-events: none; }
+  .road-center { fill: none; stroke: #fff; stroke-opacity: .8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  .water { fill: var(--water); stroke: var(--water-edge); stroke-width: 1; }
+  .trail { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: stroke; }
+  .trail.casing { stroke: rgba(0,0,0,.35); }
+  .pin circle { fill: #1c5b86; stroke: #fff; }
+  .pin text { fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .label { font-weight: 700; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.5); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; text-anchor: middle; }
+  .toolbar { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 2; }
+  .toolbar button, .toolbar label { background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+  .toolbar label { display: flex; align-items: center; gap: 6px; }
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow: auto; font-size: 14px; }
+  aside h2 { margin: 0 0 4px; font-size: 16px; }
+  aside h3 { margin: 18px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  aside p.hint { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 6px; }
+  li.sec { cursor: pointer; }
+  li.sec:hover, li.sec.hover { background: var(--green-100); }
+  li.sec.active { background: var(--green-100); box-shadow: inset 3px 0 0 var(--accent); }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+  .line-swatch { width: 26px; height: 0; border-top: 3px solid; flex: none; }
+  .line-swatch.dashed { border-top-style: dashed; }
+  li label { display: flex; align-items: center; gap: 10px; cursor: pointer; width: 100%; }
+  li input { margin: 0; }
+  .count { margin-left: auto; color: var(--muted); font-size: 12px; }
+  #detail { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); }
+  #detail strong { color: var(--ink); }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; grid-template-rows: 60vh auto; height: auto; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Van Cortlandt Park</h1>
+  <span>Bench adoption map · click a section to zoom, click again or press Esc to reset</span>
+</header>
+<main>
+  <div id="map-wrap">
+    <div class="toolbar">
+      <button id="reset">Reset view</button>
+      <label><input type="checkbox" id="toggle-base"> Original map underlay</label>
+      <label><input type="checkbox" id="toggle-labels" checked> Labels</label>
+    </div>
+  </div>
+  <aside>
+    <h2>Park sections</h2>
+    <p class="hint">Vector map traced from the official VCPA map. Trails and amenity pins are traced but hidden for now.</p>
+    <ul id="section-list"></ul>
+
+    <h3>Bottom layer</h3>
+    <ul id="bottom-list"></ul>
+
+    <div id="detail">Hover or click a section for details.</div>
+  </aside>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="data/map-layers.js"></script>
+<script>
+(function () {
+  const L = window.VCP_LAYERS, META = L.meta, SECTIONS = L.sections;
+  const [vx, vy, width, height] = META.viewBox;
+  const T = ([x, y]) => [x - vx, y - vy];              // image px -> viewBox px
+  const ring = pts => 'M' + pts.map(p => T(p).join(',')).join('L') + 'Z';
+  const line = pts => 'M' + pts.map(p => T(p).join(',')).join('L');
+
+  const palette = d3.scaleOrdinal()
+    .domain(SECTIONS.map(d => d.id))
+    .range(['#8fc79a', '#7fbfb0', '#a9a0d0', '#d9b57a', '#d59aa2', '#86c4b3', '#c9c078']);
+
+  SECTIONS.forEach(s => {
+    const pts = s.points.map(T);
+    s.bounds = [[d3.min(pts, p => p[0]), d3.min(pts, p => p[1])], [d3.max(pts, p => p[0]), d3.max(pts, p => p[1])]];
+    s.center = T(s.centroid);
+  });
+
+  const PIN_GLYPH = { bus: '🚌', restroom: '🚻', wheelchair: '♿', playground: '🛝', bbq: '🍖', picnic: '🧺', 'dog-run': '🐕', subway: '🚇', parking: '🅿', unknown: '•' };
+  const PIN_NAME  = { bus: 'Bus stop', restroom: 'Restroom', wheelchair: 'Wheelchair accessible', playground: 'Playground', bbq: 'BBQ area', picnic: 'Picnic area', 'dog-run': 'Dog run', subway: 'Subway stop', parking: 'Parking', unknown: 'Unclassified' };
+
+  const svg = d3.select('#map-wrap').append('svg')
+    .attr('viewBox', [0, 0, width, height])
+    .attr('preserveAspectRatio', 'xMidYMid meet')
+    .on('click', reset);
+  const g = svg.append('g');
+
+  // ---- underlay (original raster, off by default) ----
+  const base = g.append('image')
+    .attr('href', META.image).attr('x', -vx).attr('y', -vy)
+    .attr('width', META.imageWidth).attr('height', META.imageHeight)
+    .attr('preserveAspectRatio', 'none').attr('opacity', 0);
+
+  // ---- bottom layer ----
+  const bottom = g.append('g').attr('class', 'bottom');
+  const roads = bottom.append('g').attr('id', 'layer-roads').selectAll('path').data(L.roads).join('path')
+    .attr('class', 'road').attr('fill-rule', 'evenodd')
+    .attr('d', d => ring(d.outer) + d.holes.map(ring).join(''));
+  const roadCenter = bottom.select('#layer-roads').selectAll('path.road-center').data(L.roadLines || []).join('path')
+    .attr('class', 'road-center').attr('d', d => line(d.points));
+  // direction arrows along the main road centerlines (west -> east, or south -> north when mostly vertical)
+  const arrowData = [];
+  (L.roadLines || []).forEach(r => {
+    const p = r.points.map(T);
+    const dx = p[p.length - 1][0] - p[0][0], dy = p[p.length - 1][1] - p[0][1];
+    if (Math.abs(dx) >= Math.abs(dy) ? dx < 0 : dy > 0) p.reverse();
+    const cum = [0];
+    for (let i = 1; i < p.length; i++) cum.push(cum[i - 1] + Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]));
+    const len = cum[cum.length - 1];
+    if (len < 110) return;
+    for (let s = 55; s <= len - 40; s += 150) {
+      let i = 1; while (i < cum.length - 1 && cum[i] < s) i++;
+      const a = p[i - 1], b = p[i], t = (s - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
+      arrowData.push({ x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t,
+                       angle: Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI, road: r });
+    }
+  });
+  const arrows = bottom.select('#layer-roads').append('g').attr('class', 'road-arrows')
+    .selectAll('path').data(arrowData).join('path')
+      .attr('class', 'road-arrow').attr('d', 'M-8,-6 L7,0 L-8,6 L-4.5,0 Z');
+  const water = bottom.append('g').attr('id', 'layer-water').selectAll('path').data(L.water).join('path')
+    .attr('class', 'water').attr('d', d => ring(d.points));
+  const sections = bottom.append('g').attr('id', 'layer-park').selectAll('path').data(SECTIONS).join('path')
+    .attr('class', 'section').attr('id', d => 'sec-' + d.id)
+    .attr('fill', d => palette(d.id)).attr('fill-rule', 'evenodd').attr('d', d => ring(d.points) + (d.holes || []).map(ring).join(''))
+    .on('click', clicked)
+    .on('mouseenter', (e, d) => setHover(d.id, true))
+    .on('mouseleave', (e, d) => setHover(d.id, false));
+  sections.append('title').text(d => d.name);
+
+  // ---- top layer: trails ----
+  const top = g.append('g').attr('class', 'top').attr('display', 'none');   // trails: disabled for now
+  const trailGroups = top.selectAll('g').data(L.trails).join('g').attr('id', d => 'trail-' + d.id);
+  trailGroups.each(function (t) {
+    const grp = d3.select(this);
+    const paths = t.lines.map(line);
+    if (t.color === '#f8fdf9') grp.selectAll('path.casing').data(paths).join('path').attr('class', 'trail casing').attr('d', d => d);
+    grp.selectAll('path.main').data(paths).join('path')
+      .attr('class', 'trail main').attr('stroke', t.color).attr('d', d => d)
+      .append('title').text(t.name);
+  });
+
+  // ---- pins ----
+  const pinLayer = g.append('g').attr('class', 'pins').attr('display', 'none');   // pins: disabled for now
+  const pins = pinLayer.selectAll('g').data(L.pins).join('g')
+    .attr('class', d => 'pin pin-' + d.type)
+    .attr('transform', d => `translate(${T([d.x, d.y])})`);
+  pins.append('circle');
+  pins.append('text').text(d => PIN_GLYPH[d.type] || '•');
+  pins.append('title').text(d => PIN_NAME[d.type] || d.type);
+
+  // ---- labels ----
+  const labels = g.append('g').selectAll('text').data(SECTIONS).join('text')
+    .attr('class', 'label').attr('x', d => d.center[0]).attr('y', d => d.center[1]).text(d => d.name);
+
+  // ---- zoom to bounding box ----
+  const zoom = d3.zoom().scaleExtent([1, 10]).on('zoom', zoomed);
+  svg.call(zoom);
+  let activeId = null;
+
+  function reset() {
+    activeId = null;
+    sections.classed('active', false); list.classed('active', false);
+    detail.html('Hover or click a section for details.');
+    svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity,
+      d3.zoomTransform(svg.node()).invert([width / 2, height / 2]));
+  }
+  function clicked(event, d) {
+    event.stopPropagation();
+    if (activeId === d.id) return reset();
+    zoomTo(d, d3.pointer(event, svg.node()));
+  }
+  function zoomTo(d, pointer) {
+    const [[x0, y0], [x1, y1]] = d.bounds;
+    activeId = d.id;
+    sections.classed('active', s => s.id === d.id); list.classed('active', s => s.id === d.id);
+    detail.html(`<strong>${d.name}</strong><br><em>Bench data will appear here.</em>`);
+    svg.transition().duration(750).call(zoom.transform,
+      d3.zoomIdentity.translate(width / 2, height / 2)
+        .scale(Math.min(10, 0.9 / Math.max((x1 - x0) / width, (y1 - y0) / height)))
+        .translate(-(x0 + x1) / 2, -(y0 + y1) / 2),
+      pointer || undefined);
+  }
+  function applyScale(k) {
+    const s = 1 / Math.sqrt(k);
+    top.selectAll('path.main').attr('stroke-width', d => 3.2 * s).attr('stroke-dasharray', null);
+    trailGroups.each(function (t) {
+      const sel = d3.select(this).selectAll('path.main');
+      if (t.dashed) sel.attr('stroke-dasharray', `${7 * s} ${5 * s}`);
+    });
+    top.selectAll('path.casing').attr('stroke-width', 5.5 * s);
+    pins.selectAll('circle').attr('r', 11 * s).attr('stroke-width', 1.5 * s);
+    pins.selectAll('text').attr('font-size', 13 * s);
+    labels.attr('font-size', 20 * s);
+    sections.attr('stroke-width', d => (d.id === activeId ? 4 : 2) * s);
+    roads.attr('stroke-width', 1.6 * s); water.attr('stroke-width', 1 * s);
+    roadCenter.attr('stroke-width', 1.1 * s).attr('stroke-dasharray', `${8 * s} ${8 * s}`);
+    arrows.attr('transform', d => `translate(${d.x},${d.y}) rotate(${d.angle}) scale(${1.25 * s})`);
+  }
+  function zoomed(event) { g.attr('transform', event.transform); applyScale(event.transform.k); }
+  applyScale(1);
+
+  // ---- sidebar ----
+  const detail = d3.select('#detail');
+  const list = d3.select('#section-list').selectAll('li').data(SECTIONS).join('li').attr('class', 'sec')
+    .on('click', (e, d) => activeId === d.id ? reset() : zoomTo(d))
+    .on('mouseenter', (e, d) => setHover(d.id, true))
+    .on('mouseleave', (e, d) => setHover(d.id, false));
+  list.append('span').attr('class', 'swatch').style('background', d => palette(d.id));
+  list.append('span').text(d => d.name);
+  function setHover(id, on) { sections.classed('hover', s => on && s.id === id); list.classed('hover', s => on && s.id === id); }
+
+  function toggleList(sel, items) {
+    const li = d3.select(sel).selectAll('li').data(items).join('li');
+    const lab = li.append('label');
+    lab.append('input').attr('type', 'checkbox').property('checked', true)
+      .on('change', function (e, d) { d3.selectAll(d.selector).attr('display', this.checked ? null : 'none'); });
+    lab.append('span').attr('class', d => d.dashed ? 'line-swatch dashed' : (d.line ? 'line-swatch' : 'swatch'))
+      .each(function (d) { if (d.line) this.style.borderTopColor = d.color; else this.style.background = d.color; });
+    lab.append('span').text(d => d.name);
+    lab.append('span').attr('class', 'count').text(d => d.count || '');
+  }
+  toggleList('#bottom-list', [
+    { name: 'Park sections', color: '#8fc79a', selector: '#layer-park', count: SECTIONS.length },
+    { name: 'Main roads', color: getComputedStyle(document.documentElement).getPropertyValue('--road').trim(), selector: '#layer-roads', count: L.roads.length },
+    { name: 'Road direction arrows', color: '#2f6b4f', selector: '.road-arrows', count: arrowData.length },
+    { name: 'Water', color: getComputedStyle(document.documentElement).getPropertyValue('--water').trim(), selector: '#layer-water', count: L.water.length },
+  ]);
+
+  d3.select('#reset').on('click', e => { e.stopPropagation(); reset(); });
+  d3.select('#toggle-base').on('change', function () { base.attr('opacity', this.checked ? 0.85 : 0); });
+  d3.select('#toggle-labels').on('change', function () { labels.attr('display', this.checked ? null : 'none'); });
+  d3.select(window).on('keydown', e => { if (e.key === 'Escape') reset(); });
+})();
+</script>
+</body>
+</html>

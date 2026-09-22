@@ -1,0 +1,10 @@
+node_modules
+.next
+out
+*.log
+.DS_Store
+.data
+.env*.local
+atlas-credentials.env
+next-env.d.ts
+*.tsbuildinfo
