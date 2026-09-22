@@ -32,7 +32,7 @@ type Props = { activeId: string | null; activeSub?: string | null; onSelect: (id
 /** D3 zoom-to-bounding-box map of the traced park layers (park, roads, water). */
 export default function ParkMap({ activeId, activeSub = null, onSelect, onSelectSub, labels = true, statuses, activeBench = null, onSelectBench, underlay = false }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const api = useRef<{ zoomTo: (id: string | null, sub: string | null) => void; labels: (on: boolean) => void; benches: (st: Record<string, BenchState> | undefined, sel: string | null) => void; underlay: (on: boolean) => void } | null>(null);
+  const api = useRef<{ zoomTo: (id: string | null, sub: string | null, bench?: string | null) => void; labels: (on: boolean) => void; benches: (st: Record<string, BenchState> | undefined, sel: string | null) => void; underlay: (on: boolean) => void } | null>(null);
   const onSelectBenchRef = useRef(onSelectBench);
   onSelectBenchRef.current = onSelectBench;
   const onSelectRef = useRef(onSelect);
@@ -131,12 +131,14 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
       labels: (on) => labelSel.attr("display", on ? null : "none"),
       underlay: (on) => { base.attr("display", on ? null : "none"); g.selectAll(".section").attr("fill-opacity", on ? 0.45 : null); },
       benches: (st, sel) => benchG.attr("class", (d) => `bench bench-${d.type} st-${st?.[d.id] || "available"}${d.id === sel ? " sel" : ""}`),
-      zoomTo: (id, sub) => {
+      zoomTo: (id, sub, bench) => {
         current = id;
         sections.classed("active", (d) => d.id === id);
         subs.classed("shown", (d) => d.section === id).classed("active", (d) => d.id === sub);
         subLabels.classed("shown", (d) => d.section === id);
         labelSel.attr("display", (d) => (d.id === id && SUBS.some((x) => x.section === d.id) ? "none" : null));
+        const b = bench ? BENCHES.find((x) => x.id === bench) : undefined;
+        if (b) { const [cx, cy] = T([b.x, b.y]), r = 55; return zoomToPts([[cx - r, cy - r], [cx + r, cy + r]]); }   // close-up: the bench and its neighbours
         const sd = SUBS.find((d) => d.id === sub && d.section === id);
         const d = L.sections.find((s) => s.id === id);
         if (sd) return zoomToPts(sd.rings.flat().map(T));
@@ -148,7 +150,7 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
     return () => { svg.on(".zoom", null); svg.selectAll("*").remove(); api.current = null; };
   }, []);
 
-  useEffect(() => { api.current?.zoomTo(activeId, activeSub); }, [activeId, activeSub]);
+  useEffect(() => { api.current?.zoomTo(activeId, activeSub, activeBench); }, [activeId, activeSub, activeBench]);
   useEffect(() => { api.current?.labels(labels); }, [labels]);
   useEffect(() => { api.current?.benches(statuses, activeBench); }, [statuses, activeBench]);
   useEffect(() => { api.current?.underlay(underlay); }, [underlay]);
