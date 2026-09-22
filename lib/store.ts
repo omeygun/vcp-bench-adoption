@@ -80,30 +80,34 @@ const withTtl = (doc: Record<string, unknown>) => ("ttl" in doc ? { ...doc, expi
 const strip = (d: Doc | null): Item | undefined => { if (!d) return undefined; const { _id, expiresAt, ...rest } = d as Doc & { _id?: unknown }; void _id; void expiresAt; return rest as Item; };
 
 class MongoStore implements Store {
-  private col: Collection<Doc>;
-  constructor() { this.col = client().db(process.env.MONGODB_DB || "vcp-benches").collection<Doc>("items"); }
+  private get col(): Collection<Doc> { return client().db(process.env.MONGODB_DB || "vcp-benches").collection<Doc>("items"); }
+  /** A failed/closed connection must not poison later invocations: drop the cached client so the next call reconnects. */
+  private async run<T>(fn: () => Promise<T>): Promise<T> {
+    try { return await fn(); }
+    catch (e) { if (/Topology|ServerSelection|Network|MongoNotConnected/.test((e as Error)?.name || "")) { const c = g.__vcpMongo; g.__vcpMongo = undefined; store = undefined; c?.close().catch(() => {}); } throw e; }
+  }
   private setDoc(set: Record<string, unknown>) {
     const s = withTtl(set), $set: Record<string, unknown> = {}, $unset: Record<string, ""> = {};
     for (const [k, v] of Object.entries(s)) v === undefined ? ($unset[k] = "") : ($set[k] = v);
     return { ...(Object.keys($set).length ? { $set } : {}), ...(Object.keys($unset).length ? { $unset } : {}) };
   }
-  async get(pk: string, sk: string) { return strip(await this.col.findOne({ PK: pk, SK: sk })); }
-  async put(item: Item, ifNotExists = false) {
+  async get(pk: string, sk: string) { return this.run(async () => strip(await this.col.findOne({ PK: pk, SK: sk }))); }
+  async put(item: Item, ifNotExists = false) { return this.run(async () => {
     const doc = withTtl(item) as Doc;
     if (ifNotExists) { try { await this.col.insertOne(doc); } catch (e) { if ((e as { code?: number }).code === 11000) throw new ConditionFailed(`exists ${item.PK}/${item.SK}`); throw e; } }
     else await this.col.replaceOne({ PK: item.PK, SK: item.SK }, doc, { upsert: true });
-  }
-  async update(pk: string, sk: string, set: Record<string, unknown>, condition?: Condition) {
+  }); }
+  async update(pk: string, sk: string, set: Record<string, unknown>, condition?: Condition) { return this.run(async () => {
     const r = await this.col.updateOne({ PK: pk, SK: sk, ...condFilter(condition) }, this.setDoc(set), { upsert: !condition?.equals && !(await this.col.countDocuments({ PK: pk, SK: sk }, { limit: 1 })) });
     if (r.matchedCount === 0 && r.upsertedCount === 0) throw new ConditionFailed(`${pk}/${sk} condition`);
-  }
-  async query(pk: string, sk?: SkRange) { return (await this.col.find({ PK: pk, ...skFilter("SK", sk) }).sort({ SK: 1 }).toArray()).map((d) => strip(d)!); }
+  }); }
+  async query(pk: string, sk?: SkRange) { return this.run(async () => (await this.col.find({ PK: pk, ...skFilter("SK", sk) }).sort({ SK: 1 }).toArray()).map((d) => strip(d)!)); }
   async queryIndex(index: string, pk: string, sk?: SkRange) {
     const pkA = index + "PK", skA = index + "SK";
-    return (await this.col.find({ [pkA]: pk, ...skFilter(skA, sk) } as Filter<Doc>).sort({ [skA]: 1 }).toArray()).map((d) => strip(d)!);
+    return this.run(async () => (await this.col.find({ [pkA]: pk, ...skFilter(skA, sk) } as Filter<Doc>).sort({ [skA]: 1 }).toArray()).map((d) => strip(d)!));
   }
   /** Multi-document transaction (needs a replica set: Atlas, or `mongod --replSet`). */
-  async transact(ops: Op[]) {
+  async transact(ops: Op[]) { return this.run(async () => {
     const session = client().startSession();
     try {
       await session.withTransaction(async () => {
@@ -121,7 +125,7 @@ class MongoStore implements Store {
         }
       });
     } finally { await session.endSession(); }
-  }
+  }); }
 }
 export async function ensureIndexes() {
   const col = client().db(process.env.MONGODB_DB || "vcp-benches").collection<Document>("items");

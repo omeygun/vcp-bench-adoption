@@ -8,3 +8,5 @@ out
 atlas-credentials.env
 next-env.d.ts
 *.tsbuildinfo
+.vercel
+.env*
