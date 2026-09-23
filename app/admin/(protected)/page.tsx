@@ -2,7 +2,7 @@ import { computeStats } from "@/lib/stats";
 const usd = (c: number) => "$" + (c / 100).toLocaleString();
 export default async function Dashboard() {
   const s = await computeStats();
-  const Tile = ({ v, l }: { v: string | number | null; l: string }) => <div className="tile"><b>{v ?? "—"}</b><small>{l}</small></div>;
+  const Tile = ({ v, l, href }: { v: string | number | null; l: string; href?: string }) => { const inner = <><b>{v ?? "—"}</b><small>{l}</small></>; return href ? <a className="tile link" href={href}>{inner}</a> : <div className="tile">{inner}</div>; };
   const regions = Object.entries(s.benches.perRegion).sort();
   return (
     <>
@@ -14,13 +14,13 @@ export default async function Dashboard() {
         {regions.map(([r, c]) => { const tot = Object.values(c).reduce((a, b) => a + b, 0), ad = c.adopted || 0; return <tr key={r}><td>{r}</td><td>{ad}</td><td>{c.partial || 0}</td><td>{c.pending || 0}</td><td>{c.available || 0}</td><td><div className="bar"><i style={{ width: `${(100 * ad) / tot}%` }} /></div></td></tr>; })}
       </tbody></table>
       <h2>Requests</h2>
-      <div className="tiles"><Tile v={s.requests.newThisMonth} l="new this month" /><Tile v={s.requests.awaitingPayment} l="awaiting payment" /><Tile v={s.requests.paidNotInstalled} l="paid, not installed" /><Tile v={s.requests.medianDaysToInstall} l="median days to install" />{Object.entries(s.requests.byStatus).map(([k, v]) => <Tile key={k} v={v} l={k.replace("_", " ")} />)}</div>
+      <div className="tiles"><Tile v={s.requests.newThisMonth} l="new this month" href="/admin/requests" /><Tile v={s.requests.awaitingPayment} l="awaiting payment" href="/admin/requests?status=awaiting_payment" /><Tile v={s.requests.paidNotInstalled} l="paid, not installed" href="/admin/requests?status=paid" /><Tile v={s.requests.medianDaysToInstall} l="median days to install" />{Object.entries(s.requests.byStatus).map(([k, v]) => <Tile key={k} v={v} l={k.replace("_", " ")} href={`/admin/requests?status=${k}`} />)}</div>
       <h2>Money <small className="muted">(placeholder amounts)</small></h2>
       <div className="tiles"><Tile v={usd(s.money.pledgedCents)} l="pledged" /><Tile v={usd(s.money.receivedCents)} l="received" /><Tile v={s.money.waived} l="waived" /></div>
       <h2>Renewals</h2>
       <div className="tiles"><Tile v={s.renewals.endingWithin12Months} l="terms ending within 12 months" /><Tile v={s.renewals.remindersSentThisMonth} l="reminders sent this month" /><Tile v={s.renewals.unsubscribed} l="unsubscribed" /></div>
       <h2>Reports</h2>
-      <div className="tiles">{Object.entries(s.reports.byStatus).map(([k, v]) => <Tile key={k} v={v} l={k} />)}<Tile v={s.reports.medianDaysToFix} l="median days to fix" />{Object.entries(s.reports.byCategory).map(([k, v]) => <Tile key={k} v={v} l={k.replace("_", " ")} />)}</div>
+      <div className="tiles">{Object.entries(s.reports.byStatus).map(([k, v]) => <Tile key={k} v={v} l={k} href={`/admin/reports?status=${k}`} />)}<Tile v={s.reports.medianDaysToFix} l="median days to fix" />{Object.entries(s.reports.byCategory).map(([k, v]) => <Tile key={k} v={v} l={k.replace("_", " ")} />)}</div>
     </>
   );
 }

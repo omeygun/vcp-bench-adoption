@@ -22,22 +22,37 @@ const STEPS = [
   { n: "03", title: "Dedicate it", text: "Add a name or a message and choose how long you want to adopt it for. No payment step here for now." },
 ];
 
+/** Free-licence photos (Wikimedia Commons, Flickr) in public/sections/<id>.jpg; each licence requires this credit. */
+const PHOTO_CREDIT: Record<string, { by: string; license: string; url: string }> = {
+  "northwest-forest": { by: "RoySmith", license: "CC BY-SA 4.0", url: "https://commons.wikimedia.org/wiki/File:Horseback_Riding_in_Van_Cortlandt_Park.jpg" },
+  "croton-woods": { by: "Jim.henderson", license: "CC BY 4.0", url: "https://commons.wikimedia.org/wiki/File:Greenway_north_of_Cortlandt_bridge_jeh.jpg" },
+  "parade-ground": { by: "Dmadeo", license: "CC BY-SA 3.0", url: "https://commons.wikimedia.org/wiki/File:Van-cortland-park.JPG" },
+  "tibbetts-golf": { by: "Mbochart", license: "CC BY-SA 4.0", url: "https://commons.wikimedia.org/wiki/File:Van_Cortlandt_Lake,_The_Bronx.jpg" },
+  "northeast-forest": { by: "Steven Pisano", license: "CC BY 2.0", url: "https://www.flickr.com/photos/45776673@N04/10812386264" },
+  "allen-shandler": { by: "Hugo L. González", license: "CC BY-SA 4.0", url: "https://commons.wikimedia.org/wiki/File:Van_Cortlandt_Park_entrance_from_Norwood,_Bronx_IMG_3047_HLG.jpg" },
+  "golf-course-south": { by: "Shannon McGee", license: "CC BY-SA 2.0", url: "https://www.flickr.com/photos/7830943@N03/5860797508" },
+};
+
 function SectionDetail({ s, sub, statuses, onSub, onBench, onlyFree, setOnlyFree, onBack }: { s: Section; sub: string | null; statuses: Record<string, BenchState>; onSub: (id: string) => void; onBench: (id: string) => void; onlyFree: boolean; setOnlyFree: (v: boolean) => void; onBack: () => void }) {
   const mine = BENCHES.filter((b) => b.section === s.id);
-  const n = (st: BenchState) => mine.filter((b) => (statuses[b.id] || "available") === st).length;
   const st = (id: string) => statuses[id] || "available";
+  const free = (size: number) => mine.filter((b) => b.size === size && (st(b.id) === "available" || st(b.id) === "partial")).length;   // at least one side open
   const listed = mine.filter((b) => (!sub || b.sub === sub) && (!onlyFree || st(b.id) === "available" || st(b.id) === "partial")).sort((a, b) => parseInt(a.id) - parseInt(b.id));
   const subs = SUBS.filter((d) => d.section === s.id);
   const xs = s.points.map((p) => p[0]), ys = s.points.map((p) => p[1]);
   const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
   const pad = 12;
+  const [photoOk, setPhotoOk] = useState(true);
+  useEffect(() => setPhotoOk(true), [s.id]);
   const d = "M" + s.points.join("L") + "Z" + (s.holes || []).map((h) => "M" + h.join("L") + "Z").join("");
   return (
     <div className="side-detail">
       <button className="side-back" onClick={onBack}>← {sub ? `Whole section ${letterOf(s.id)}` : "All sections"}</button>
-      <svg className="thumb" viewBox={`${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`} aria-hidden>
-        <path d={d} fill={colorOf(s.id)} fillRule="evenodd" stroke="#fff" strokeWidth={4} />
-      </svg>
+      {photoOk && PHOTO_CREDIT[s.id] ? <figure className="thumb-fig"><img className="thumb photo" src={`/sections/${s.id}.jpg`} alt={s.name} onError={() => setPhotoOk(false)} />
+        <figcaption><a href={PHOTO_CREDIT[s.id].url} target="_blank" rel="noreferrer">Photo: {PHOTO_CREDIT[s.id].by}, {PHOTO_CREDIT[s.id].license}</a></figcaption></figure> : (   // silhouette until a photo exists
+        <svg className="thumb" viewBox={`${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`} aria-hidden>
+          <path d={d} fill={colorOf(s.id)} fillRule="evenodd" stroke="#fff" strokeWidth={4} />
+        </svg>)}
       <b style={{ background: colorOf(s.id) }}>{letterOf(s.id)}</b>
       <h3>{s.name}</h3>
       {subs.length > 0 && (
@@ -49,6 +64,13 @@ function SectionDetail({ s, sub, statuses, onSub, onBench, onlyFree, setOnlyFree
           ))}
         </div>
       )}
+      <dl>
+        <dt>8 ft benches</dt><dd>{free(8)}/{mine.filter((b) => b.size === 8).length} available</dd>
+        <dt>4 ft benches</dt><dd>{free(4)}/{mine.filter((b) => b.size === 4).length} available</dd>
+      </dl>
+      <ul className="key">
+        <li><i className="k-available" /> available</li><li><i className="k-partial" /> one side free</li><li><i className="k-pending" /> requested</li><li><i className="k-adopted" /> adopted</li>
+      </ul>
       <div className="bench-list-head">
         <b>{sub ? `Benches in ${sub}` : "Benches"} <small>({listed.length})</small></b>
         <label className="toggle"><input type="checkbox" checked={onlyFree} onChange={(e) => setOnlyFree(e.target.checked)} /> free only</label>
@@ -57,18 +79,6 @@ function SectionDetail({ s, sub, statuses, onSub, onBench, onlyFree, setOnlyFree
         {listed.map((b) => <button key={b.id} className={`chip st-${st(b.id)}`} title={`${b.size} ft ${b.type === "concrete" ? "concrete" : "World's Fair"} · ${st(b.id)}`} onClick={() => onBench(b.id)}>{b.id}</button>)}
         {listed.length === 0 && <small>No benches match.</small>}
       </div>
-      <dl>
-        <dt>Benches</dt><dd>{mine.length}</dd>
-        <dt>8 ft (two plaque sides)</dt><dd>{mine.filter((b) => b.size === 8).length}</dd>
-        <dt>4 ft</dt><dd>{mine.filter((b) => b.size === 4).length}</dd>
-        <dt>Adopted</dt><dd>{n("adopted")}</dd>
-        <dt>Requested / pending</dt><dd>{n("pending")}</dd>
-        <dt>One side free</dt><dd>{n("partial")}</dd>
-        <dt>Available</dt><dd>{n("available")}</dd>
-      </dl>
-      <ul className="key">
-        <li><i className="k-available" /> available</li><li><i className="k-partial" /> one side free</li><li><i className="k-pending" /> requested</li><li><i className="k-adopted" /> adopted</li>
-      </ul>
       <p className="tbd">Tap a bench number above or on the map to see its plaques or request one. 8 ft benches have two plaque sides.</p>
     </div>
   );
@@ -86,7 +96,7 @@ export default function Landing() {
   const [adoptions, setAdoptions] = useState<PublicAdoption[]>([]);
   const statuses = useMemo(() => benchStates(BENCHES, adoptions), [adoptions]);
   const sides = useMemo(() => sideStates(BENCHES, adoptions), [adoptions]);
-  const reload = () => fetch("/api/adoptions").then((r) => r.json()).then(setAdoptions).catch(() => {});
+  const reload = () => fetch("/api/adoptions").then((r) => r.json()).then((d) => Array.isArray(d) && setAdoptions(d)).catch(() => {});
   useEffect(() => { reload(); }, []);
   const pick = (id: string | null) => { setActive(id); setActiveSub(null); setBench(null); };
   const pickBench = (id: string) => { const b = BENCHES.find((x) => x.id === id); if (!b) return; setBench(id); setActive(b.section); setActiveSub(b.sub); };
@@ -186,7 +196,11 @@ export default function Landing() {
         </div>
         <div className="map-slot">
           <div className="backdrop" onClick={toggleExpand} />
-          <div ref={card} className={`map-card${expanded ? " expanded" : ""}`}>
+          <div ref={card} className={`map-card${expanded ? " expanded" : ""}${bench ? " has-bench" : ""}`} onClickCapture={(e) => {   // partially off-screen? center it
+            const r = e.currentTarget.getBoundingClientRect();
+            if (!expanded && (r.top < 0 || r.bottom > innerHeight)) gsap.to(window, { duration: 0.6, ease: "power2.inOut", scrollTo: { y: e.currentTarget, offsetY: Math.max(72, (innerHeight - r.height) / 2) } });
+          }}>
+            {!expanded && <button className="map-open" onClick={toggleExpand}>Tap to open the map</button>}   {/* phones only (CSS): the map is used full-screen */}
             <div className="map-bar">
               <strong>{bench ? `Bench ${bench}` : activeSection ? `${activeSub || letterOf(activeSection.id)} · ${activeSection.name}` : "Van Cortlandt Park"}</strong>
               <div className="map-actions">
@@ -201,7 +215,7 @@ export default function Landing() {
               </div>
             </div>
             <div className="map-body">
-              <ParkMap activeId={active} activeSub={activeSub} onSelect={(id) => (id === active && !activeSub && !bench ? pick(null) : pick(id))}
+              <ParkMap controls activeId={active} activeSub={activeSub} onSelect={(id) => (id === active && !activeSub && !bench ? pick(null) : pick(id))}
                 onSelectSub={(id) => { setBench(null); setActiveSub((cur) => (cur === id ? null : id)); }} statuses={statuses} sides={sides} activeBench={bench} onSelectBench={pickBench} underlay={underlay} />
               <aside className="map-side">
                 {bench ? <BenchPanel benchId={bench} onBack={() => setBench(null)} onChanged={reload} /> : activeSection ? <SectionDetail s={activeSection} sub={activeSub} statuses={statuses} onSub={(id) => setActiveSub((cur) => (cur === id ? null : id))} onBench={pickBench} onlyFree={onlyFree} setOnlyFree={setOnlyFree} onBack={() => (activeSub ? setActiveSub(null) : pick(null))} /> : (

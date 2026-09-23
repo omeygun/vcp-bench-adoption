@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import layers from "../data/map-layers.json";
 import benchData from "../data/benches.json";
@@ -27,12 +27,13 @@ export const letterOf = (id: string) => String.fromCharCode(65 + SECTIONS.findIn
 
 export type BenchState = "available" | "partial" | "pending" | "adopted";
 type Props = { activeId: string | null; activeSub?: string | null; onSelect: (id: string | null) => void; onSelectSub?: (id: string) => void; labels?: boolean;
-  statuses?: Record<string, BenchState>; sides?: Record<string, ("available" | "pending" | "adopted")[]>; activeBench?: string | null; onSelectBench?: (id: string) => void; underlay?: boolean };
+  statuses?: Record<string, BenchState>; sides?: Record<string, ("available" | "pending" | "adopted")[]>; activeBench?: string | null; onSelectBench?: (id: string) => void; underlay?: boolean; controls?: boolean };
 
 /** D3 zoom-to-bounding-box map of the traced park layers (park, roads, water). */
-export default function ParkMap({ activeId, activeSub = null, onSelect, onSelectSub, labels = true, statuses, sides, activeBench = null, onSelectBench, underlay = false }: Props) {
+export default function ParkMap({ activeId, activeSub = null, onSelect, onSelectSub, labels = true, statuses, sides, activeBench = null, onSelectBench, underlay = false, controls = false }: Props) {
+  const [hint, setHint] = useState(true);   // "how to zoom" tip, gone after the first zoom
   const svgRef = useRef<SVGSVGElement>(null);
-  const api = useRef<{ zoomTo: (id: string | null, sub: string | null, bench?: string | null) => void; labels: (on: boolean) => void; benches: (st: Record<string, BenchState> | undefined, sd: Props["sides"], sel: string | null) => void; underlay: (on: boolean) => void } | null>(null);
+  const api = useRef<{ zoomTo: (id: string | null, sub: string | null, bench?: string | null) => void; labels: (on: boolean) => void; benches: (st: Record<string, BenchState> | undefined, sd: Props["sides"], sel: string | null) => void; underlay: (on: boolean) => void; zoomBy: (f: number) => void } | null>(null);
   const onSelectBenchRef = useRef(onSelectBench);
   onSelectBenchRef.current = onSelectBench;
   const onSelectRef = useRef(onSelect);
@@ -116,12 +117,13 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
       halves.attr("x", (h) => -h.bench.size * 0.7 * bs + ((h.side - 1) * h.bench.size * 1.4 * bs) / h.bench.sides).attr("y", -2.4 * bs)
         .attr("width", (h) => (h.bench.size * 1.4 * bs) / h.bench.sides).attr("height", 4.8 * bs).attr("stroke-width", 0.7 * bs);
       const ppu0 = ((svgRef.current?.clientWidth || width) / width) * k;
-      sideNums.attr("x", (h) => -h.bench.size * 0.7 * bs + ((h.side - 0.5) * h.bench.size * 1.4 * bs) / 2).attr("y", 0.9 * bs)
+      const numX = (h: { bench: Bench; side: number }) => -h.bench.size * 0.7 * bs + ((h.side - 0.5) * h.bench.size * 1.4 * bs) / 2;
+      sideNums.attr("x", numX).attr("y", 0).attr("transform", (h) => `rotate(${-h.bench.angle} ${numX(h)} 0)`)   // counter-rotate: always upright
         .attr("font-size", Math.min(4.8 * bs * 0.8, 9 / ppu0)).attr("display", ppu0 >= 3 ? null : "none");
       const ppu = ((svgRef.current?.clientWidth || width) / width) * k;   // screen px per map unit
-      benchLabels.attr("font-size", 10 / ppu).attr("y", -3.2 * bs).attr("display", ppu >= 1.5 ? null : "none");
+      benchLabels.attr("font-size", 10 / ppu).attr("transform", (d) => `rotate(${-d.angle}) translate(0 ${-3.2 * bs})`).attr("display", ppu >= 1.5 ? null : "none");
     };
-    const zoom = d3.zoom<SVGSVGElement, unknown>().scaleExtent([1, 14]).on("zoom", (e) => { g.attr("transform", e.transform); applyScale(e.transform.k); });
+    const zoom = d3.zoom<SVGSVGElement, unknown>().scaleExtent([1, 14]).on("zoom", (e) => { g.attr("transform", e.transform); applyScale(e.transform.k); if (e.sourceEvent) setHint(false); });
     svg.call(zoom).on("click", () => onSelectRef.current(null));
     let current: string | null = null;
 
@@ -137,6 +139,7 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
     };
     api.current = {
       labels: (on) => labelSel.attr("display", on ? null : "none"),
+      zoomBy: (f) => { setHint(false); svg.transition().duration(300).call(zoom.scaleBy, f); },
       underlay: (on) => { base.attr("display", on ? null : "none"); g.selectAll(".section").attr("fill-opacity", on ? 0.45 : null); },
       benches: (st, sd, sel) => {
         benchG.attr("class", (d) => `bench bench-${d.type} st-${st?.[d.id] || "available"}${d.id === sel ? " sel" : ""}`);
@@ -166,5 +169,16 @@ export default function ParkMap({ activeId, activeSub = null, onSelect, onSelect
   useEffect(() => { api.current?.benches(statuses, sides, activeBench); }, [statuses, sides, activeBench]);
   useEffect(() => { api.current?.underlay(underlay); }, [underlay]);
 
-  return <svg ref={svgRef} className="park-map" role="img" aria-label="Map of Van Cortlandt Park sections" />;
+  const map = <svg ref={svgRef} className="park-map" role="img" aria-label="Map of Van Cortlandt Park sections" />;
+  if (!controls) return map;
+  return (
+    <div className="map-wrap">
+      {map}
+      <div className="zoom-ctl">
+        <button aria-label="Zoom in" onClick={() => api.current?.zoomBy(1.8)}>+</button>
+        <button aria-label="Zoom out" onClick={() => api.current?.zoomBy(1 / 1.8)}>−</button>
+      </div>
+      {hint && <div className="zoom-hint" aria-hidden><span className="fine">Scroll</span><span className="coarse">Pinch</span> or use + / − to zoom · drag to move</div>}
+    </div>
+  );
 }

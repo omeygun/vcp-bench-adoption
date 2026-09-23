@@ -1,4 +1,5 @@
-"""Cut the big sections into equal-area quadrants (long axis first, then the other axis) -> data/subsections.json, and tag benches with their subsection.
+"""Cut the big sections into 2x2 pieces (long axis first, then the other axis), placing the cuts so the tallest piece is as short as possible
+(each piece keeps >= MIN_SHARE of the section's area) -> data/subsections.json, and tag benches with their subsection.
 Run: python tools/make_subsections.py"""
 import json
 from shapely.geometry import Polygon, Point, box
@@ -13,21 +14,36 @@ def band(poly, lo, hi, vertical):
     x0, y0, x1, y1 = poly.bounds
     return poly.intersection(box(x0 - 1, lo, x1 + 1, hi) if vertical else box(lo, y0 - 1, hi, y1 + 1))
 
-def cut_at(poly, frac, vertical, lo, hi):
-    """coordinate where the band from `lo` holds `frac` of the area (binary search)"""
-    target = poly.area * frac; a, b = lo, hi
-    for _ in range(40):
-        m = (a + b) / 2
-        if band(poly, lo, m, vertical).area < target: a = m
-        else: b = m
-    return (a + b) / 2
+MIN_SHARE = 0.15   # of the whole section, per piece: stops the search from shaving off slivers
+STEPS = 80         # cut positions tried per axis
+TOL = 5            # heights within this many map units count as a tie; ties go to the more even split
 
-def split(poly, k, vertical):
-    """k equal-area pieces along one axis"""
+height = lambda g: (g.bounds[3] - g.bounds[1]) if not g.is_empty else 0
+
+def halves(poly, vertical):
+    """both sides of every straight cut across `poly`, STEPS positions along the axis"""
     x0, y0, x1, y1 = poly.bounds
     lo, hi = (y0, y1) if vertical else (x0, x1)
-    edges = [lo] + [cut_at(poly, i / k, vertical, lo, hi) for i in range(1, k)] + [hi]
-    return [band(poly, edges[i], edges[i + 1], vertical) for i in range(k)]
+    for i in range(1, STEPS):
+        m = lo + (hi - lo) * i / STEPS
+        yield band(poly, lo - 1, m, vertical), band(poly, m, hi + 1, vertical)
+
+def best_pair(poly, vertical, total):
+    """cut `poly` in two so the taller piece is as short as possible; None if no cut leaves both pieces big enough"""
+    ok = [(a, b) for a, b in halves(poly, vertical) if min(a.area, b.area) >= MIN_SHARE * total]
+    return min(ok, key=lambda ab: (round(max(height(ab[0]), height(ab[1])) / TOL), abs(ab[0].area - ab[1].area)), default=None)
+
+def quadrants(poly, vertical):
+    """ponytail: brute-force grid over cut positions, ~STEPS^2 shapely clips per section; fine for 4 sections run by hand"""
+    total, best = poly.area, None
+    for a, b in halves(poly, vertical):
+        pa, pb = best_pair(a, not vertical, total), best_pair(b, not vertical, total)
+        if not (pa and pb): continue
+        pieces = [*pa, *pb]
+        areas = [q.area for q in pieces]
+        score = (round(max(map(height, pieces)) / TOL), max(areas) - min(areas))
+        if best is None or score < best[0]: best = (score, pieces)
+    return best[1]
 
 subs = []
 for s in L['sections']:
@@ -35,7 +51,7 @@ for s in L['sections']:
     poly = Polygon(s['points'], s.get('holes', []))
     x0, y0, x1, y1 = poly.bounds
     vertical = (y1 - y0) >= (x1 - x0)
-    pieces = [q for half in split(poly, 2, vertical) for q in split(half, 2, not vertical)]   # 2 x 2 quadrants
+    pieces = quadrants(poly, vertical)
     for i, piece in enumerate(pieces):
         parts = list(piece.geoms) if hasattr(piece, 'geoms') else [piece]
         parts = [p for p in parts if p.geom_type == 'Polygon' and p.area > 200]

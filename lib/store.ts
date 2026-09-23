@@ -3,6 +3,9 @@
 import { MongoClient, type Collection, type Document, type Filter } from "mongodb";
 import fs from "node:fs";
 import path from "node:path";
+import dns from "node:dns";
+// Some home routers return malformed SRV answers to Node (querySrv EBADRESP) for mongodb+srv URIs; use public DNS in dev.
+if (process.env.NODE_ENV !== "production") dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
 export type Item = Record<string, unknown> & { PK: string; SK: string };
 export type SkRange = { beginsWith?: string; lte?: string; gte?: string };

@@ -10,6 +10,14 @@ export function rateLimit(key: string, max: number, windowMs: number) {
   arr.push(now); hits.set(key, arr);
   if (arr.length > max) throw new HttpError(429, "Too many requests, try again later");
 }
+/** Fixed-window counter in the database, shared by every serverless instance. For brute-force-sensitive routes (login). */
+export async function rateLimitShared(key: string, max: number, windowMs: number) {
+  const { getStore } = await import("./store");
+  const win = Math.floor(Date.now() / windowMs), pk = `RATE#${key}`, sk = String(win);
+  const cur = ((await getStore().get(pk, sk))?.count as number) || 0;   // ponytail: read-then-write, a burst can overshoot by a few; fine for login
+  if (cur >= max) throw new HttpError(429, "Too many attempts, try again later");
+  await getStore().put({ PK: pk, SK: sk, count: cur + 1, ttl: Math.ceil(((win + 1) * windowMs) / 1000) });
+}
 export const isEmail = (s: unknown): s is string => typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
 export const str = (v: unknown, max: number, min = 0) => (typeof v === "string" && v.trim().length >= min && v.length <= max ? v.trim() : undefined);
 export async function body(req: Request): Promise<Record<string, unknown>> { try { return (await req.json()) as Record<string, unknown>; } catch { throw new HttpError(400, "Invalid JSON"); } }

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { BenchState } from "./ParkMap";
+import { fmt } from "@/lib/format";
 
 export type PublicAdoption = { id: string; benchId: string; side: number; status: string; honoree?: string; plaque?: string; termStart?: string; termEnd?: string };
 type SideInfo = { side: number; state: "available" | "pending" | "adopted"; current: PublicAdoption[]; history: PublicAdoption[] };
@@ -37,7 +38,6 @@ export function SideDiagram({ angle, sides, highlight }: { angle: number; sides:
   );
 }
 const TYPE = { "worlds-fair": "World's Fair", concrete: "Concrete base" } as Record<string, string>;
-const fmt = (d?: string) => (d ? new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "");
 
 export default function BenchPanel({ benchId, onBack, onChanged }: { benchId: string; onBack: () => void; onChanged: () => void }) {
   const [d, setD] = useState<Detail | null>(null);
@@ -62,16 +62,17 @@ export default function BenchPanel({ benchId, onBack, onChanged }: { benchId: st
                 <div key={a.id}>
                   {a.honoree && <div>{a.honoree}</div>}
                   {a.plaque ? <pre>{a.plaque}</pre> : <small>Plaque text is shown once installed.</small>}
-                  {a.termEnd ? <small>Adopted through {fmt(a.termEnd)}</small> : <small>Request in progress</small>}
+                  {a.termStart && a.termEnd ? <small>Adopted {fmt(a.termStart)} – {fmt(a.termEnd)}</small> : <small>Request in progress</small>}
                 </div>
               ))}
               {s.state === "available" && <button className="btn primary" onClick={() => setMode({ kind: "request", side: s.side })}>Request this side</button>}
-              {s.history.length > 0 && <small>{s.history.length} past adoption{s.history.length > 1 ? "s" : ""}</small>}
+              {s.history.length > 0 && <small>Past: {s.history.filter((a) => a.termStart).map((a) => `${a.honoree ? a.honoree + ", " : ""}${fmt(a.termStart)} – ${fmt(a.termEnd)}`).join(" · ") || `${s.history.length} past adoption${s.history.length > 1 ? "s" : ""}`}</small>}
             </section>
           ))}
           <div className="report-link">
             {d.openReports.length > 0 && <div><small>{d.openReports.length} open report{d.openReports.length > 1 ? "s" : ""} on this bench ({d.openReports.map((r) => r.category.replace("_", " ")).join(", ")}).</small></div>}
             <button className="linkish" onClick={() => setMode({ kind: "report" })}>Report a problem with this bench</button>
+            <div><a className="linkish" href={`/bench/${d.bench.id}`}>Bench page to share</a></div>
           </div>
         </>
       )}

@@ -17,6 +17,7 @@ export type Adoption = {
   amountCents: number; payment: { status: "pending" | "paid" | "waived"; method?: string; ref?: string };
   fundraising: boolean; acknowledgedTimelineAt: string; questions?: string; notes?: string; relocatedFrom?: string; waiverCode?: string;
   reminders?: { channels: string[]; nextReminderAt?: string; sent: { at: string; channel: string; kind: string }[] };
+  log?: { at: string; by: string; change: string }[];
   holdExpiresAt?: number; createdAt: string; updatedAt: string;
 };
 const sidePrefix = (side: number) => `SIDE#${side}#`;
@@ -107,9 +108,13 @@ export async function createAdoption(input: RequestInput) {
 }
 
 export type Patch = { status?: Status; payment?: Partial<Adoption["payment"]>; termStart?: string; notes?: string; relocatedFrom?: string; plaqueText?: string };
-export async function patchAdoption(id: string, p: Patch) {
+export async function patchAdoption(id: string, p: Patch, by = "system") {
   const a = await getAdoption(id);
   if (!a) throw new HttpError(404, "Adoption not found");
+  // the combination after this patch must make sense
+  const status = p.status || a.status, pay = p.payment?.status || a.payment.status, start = p.termStart || a.termStart;
+  if ((status === "paid" || status === "installed") && pay === "pending") throw new HttpError(422, `Can't mark ${status} while payment is pending — record the payment first`);
+  if (status === "installed" && !start) throw new HttpError(422, "Set the installed-on date before marking installed");
   const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
   if (p.status) { if (!STATUSES.includes(p.status)) throw new HttpError(422, "Bad status"); set.status = p.status; if (p.status !== "inquiry") { set.holdExpiresAt = undefined; set.ttl = undefined; } }
   if (p.payment) set.payment = { ...a.payment, ...p.payment };
@@ -126,6 +131,11 @@ export async function patchAdoption(id: string, p: Patch) {
   if (p.status === "cancelled" || (p.status && p.status !== "installed" && a.status === "installed")) {   // cancelling or leaving installed: stop reminders
     Object.assign(set, { GSI3PK: undefined, GSI3SK: undefined, reminders: { ...(a.reminders || { channels: ["email"], sent: [] }), nextReminderAt: undefined } });
   }
+  const change = [p.status && p.status !== a.status && `status ${a.status} → ${p.status}`, p.payment?.status && p.payment.status !== a.payment.status && `payment ${a.payment.status} → ${p.payment.status}`,
+    p.termStart && p.termStart !== a.termStart && `installed on ${p.termStart}`, set.plaque && `plaque text edited`, p.notes !== undefined && (set.notes || "") !== (a.notes || "") && "notes edited"].filter(Boolean).join(", ");
+  if (change) set.log = [...(a.log || []), { at: set.updatedAt as string, by, change }].slice(-50);
   await getStore().update(pk(a.benchId), sidePrefix(a.side) + a.id, set);
   return { ...a, ...set } as Adoption;
 }
+/** Admin search: case-insensitive substring over the fields staff look people up by. */
+export const matchesQuery = (a: Adoption, q: string) => [a.benchId, a.id, a.donor.name, a.donor.email, a.donor.phone, a.honoree, a.plaque.text].some((v) => v?.toLowerCase().includes(q));

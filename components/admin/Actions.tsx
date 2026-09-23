@@ -14,10 +14,15 @@ function useAction() {
   return { busy, err, run };
 }
 
-export function RequestActions({ id, status, payment, termStart, notes }: { id: string; status: string; payment: { status: string; method?: string; ref?: string }; termStart?: string; notes?: string }) {
+const EMAILS_DONOR = ["awaiting_payment", "paid", "installed", "cancelled"];
+export function RequestActions({ id, status, payment, termStart, notes, plaque }: { id: string; status: string; payment: { status: string; method?: string; ref?: string }; termStart?: string; notes?: string; plaque: string }) {
   const { busy, err, run } = useAction();
-  const [f, setF] = useState({ status, paymentStatus: payment.status, method: payment.method || "", ref: payment.ref || "", termStart: termStart || "", notes: notes || "" });
-  const save = () => run(() => call(`/api/adoptions/${id}`, "PATCH", { status: f.status, payment: { status: f.paymentStatus, method: f.method || undefined, ref: f.ref || undefined }, termStart: f.termStart || undefined, notes: f.notes }));
+  const [f, setF] = useState({ status, paymentStatus: payment.status, method: payment.method || "", ref: payment.ref || "", termStart: termStart || "", notes: notes || "", plaque });
+  const save = () => {
+    if (f.status === "cancelled" && status !== "cancelled" && !confirm("Cancel this request? The bench side becomes free for someone else, and the donor is emailed.")) return;
+    if (f.status !== status && f.status !== "cancelled" && EMAILS_DONOR.includes(f.status) && !confirm(`Change status to "${f.status.replace("_", " ")}"? The donor will be emailed.`)) return;
+    run(() => call(`/api/adoptions/${id}`, "PATCH", { status: f.status, payment: { status: f.paymentStatus, method: f.method || undefined, ref: f.ref || undefined }, termStart: f.termStart || undefined, notes: f.notes, plaqueText: f.plaque !== plaque ? f.plaque : undefined }));
+  };
   return (
     <div className="actions">
       <div className="row">
@@ -26,6 +31,7 @@ export function RequestActions({ id, status, payment, termStart, notes }: { id: 
         <select value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}><option value="">method…</option>{["online", "check", "zelle", "waiver"].map((s) => <option key={s}>{s}</option>)}</select>
       </div>
       <div className="row"><input placeholder="payment ref" value={f.ref} onChange={(e) => setF({ ...f, ref: e.target.value })} /><label className="muted" style={{ fontSize: 12 }}>installed on <input type="date" value={f.termStart} onChange={(e) => setF({ ...f, termStart: e.target.value })} /></label></div>
+      <label className="muted" style={{ fontSize: 12 }}>plaque text<textarea value={f.plaque} onChange={(e) => setF({ ...f, plaque: e.target.value.slice(0, 300) })} rows={3} /></label>
       <textarea placeholder="staff notes" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} rows={2} />
       <div className="row"><button className="btn primary" disabled={busy} onClick={save}>Save</button>{err && <span style={{ color: "#a23b2f" }}>{err}</span>}</div>
     </div>

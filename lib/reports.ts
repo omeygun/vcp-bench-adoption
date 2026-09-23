@@ -8,7 +8,7 @@ import { listForBench, isLive } from "./adoptions";
 export const CATEGORIES = ["damaged_bench", "damaged_plaque", "missing_plaque", "graffiti", "bench_missing", "other"] as const;
 export const REPORT_STATUSES = ["open", "acknowledged", "fixed", "closed", "duplicate"] as const;
 export type Report = { id: string; benchId: string; side?: number; adoptionId?: string; category: (typeof CATEGORIES)[number]; description: string; photos: { url: string }[];
-  reporter?: { name?: string; email?: string; phone?: string }; status: (typeof REPORT_STATUSES)[number]; duplicateOf?: string; staffNotes?: string; resolvedAt?: string; createdAt: string; updatedAt: string };
+  reporter?: { name?: string; email?: string; phone?: string }; status: (typeof REPORT_STATUSES)[number]; duplicateOf?: string; staffNotes?: string; resolvedAt?: string; createdAt: string; updatedAt: string; log?: { at: string; by: string; change: string }[] };
 const pk = (benchId: string) => `BENCH#${benchId}`;
 export const asReport = (i: Item) => i as unknown as Report;
 
@@ -47,12 +47,14 @@ export async function getReport(id: string) {
   const ptr = await getStore().get(`REPORT#${id}`, "PTR"); if (!ptr) return undefined;
   const ref = ptr.ref as { PK: string; SK: string }; const i = await getStore().get(ref.PK, ref.SK); return i ? asReport(i) : undefined;
 }
-export async function patchReport(id: string, p: { status?: string; staffNotes?: string }) {
+export async function patchReport(id: string, p: { status?: string; staffNotes?: string }, by = "system") {
   const r = await getReport(id); if (!r) throw new HttpError(404, "Report not found");
   const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
   if (p.status) { if (!REPORT_STATUSES.includes(p.status as Report["status"])) throw new HttpError(422, "Bad status"); set.status = p.status; set.GSI4PK = `REPORT#${p.status}`; if (p.status === "fixed" || p.status === "closed") set.resolvedAt = set.updatedAt; }
   if (p.staffNotes !== undefined) set.staffNotes = str(p.staffNotes, 2000) ?? "";
+  const change = [p.status && p.status !== r.status && `status ${r.status} → ${p.status}`, p.staffNotes !== undefined && (set.staffNotes || "") !== (r.staffNotes || "") && "notes edited"].filter(Boolean).join(", ");
+  if (change) set.log = [...(r.log || []), { at: set.updatedAt as string, by, change }].slice(-50);
   await getStore().update(pk(r.benchId), `REPORT#${r.id}`, set);
-  if (p.status === "fixed" && r.reporter?.email) await sendEmail({ to: r.reporter.email, subject: `Bench ${r.benchId}: fixed`, text: `Good news: the issue you reported on bench ${r.benchId} has been fixed. Thank you for looking out for the park.`, html: `<p>Good news: the issue you reported on bench ${r.benchId} has been fixed. Thank you for looking out for the park.</p>` }).catch(console.error);
+  if (p.status === "fixed" && r.status !== "fixed" && r.reporter?.email) await sendEmail({ to: r.reporter.email, subject: `Bench ${r.benchId}: fixed`, text: `Good news: the issue you reported on bench ${r.benchId} has been fixed. Thank you for looking out for the park.`, html: `<p>Good news: the issue you reported on bench ${r.benchId} has been fixed. Thank you for looking out for the park.</p>` }).catch(console.error);
   return { ...r, ...set } as Report;
 }

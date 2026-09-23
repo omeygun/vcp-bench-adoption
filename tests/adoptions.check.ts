@@ -55,6 +55,26 @@ async function main() {
   const b4b = BENCHES.find((b) => b.size === 4 && b.region === b4.region && b.id !== b4.id)!;
   await assert.rejects(createAdoption(validateRequest(base(b4b.id, 1, { waiverCode: w.code }))), /already used/);
 
+  // admin rules: no paid/installed while payment pending, installed needs a date; every change is logged with who made it
+  const r1 = await createAdoption(validateRequest(base(BENCHES.filter((b) => b.size === 8)[5].id, 1)));
+  await assert.rejects(patchAdoption(r1.id, { status: "paid" }), /payment is pending/);
+  await assert.rejects(patchAdoption(r1.id, { status: "installed", payment: { status: "paid" } }), /installed-on date/);
+  const logged = await patchAdoption(r1.id, { status: "paid", payment: { status: "paid", method: "check" } }, "staff@example.org");
+  assert.deepEqual(logged.log?.map((l) => [l.by, l.change]), [["staff@example.org", "status inquiry → paid, payment pending → paid"]]);
+  assert.equal((await patchAdoption(r1.id, { notes: "" }, "x")).log?.length, 1);   // no-op save adds nothing
+
+  // sessions die when the staff member is removed or their password changes
+  const { setStaffPassword, removeStaff, requireAdmin, makeSession, COOKIE } = await import("../lib/auth");
+  const reqWith = (v: string) => new Request("http://x", { headers: { cookie: `${COOKIE}=${v}` } });
+  const s1 = await setStaffPassword("a@example.org", "first-password-1"); await setStaffPassword("b@example.org", "other-password-1");
+  const tok = makeSession("a@example.org", s1.hash);
+  assert.equal((await requireAdmin(reqWith(tok))).email, "a@example.org");
+  await setStaffPassword("a@example.org", "second-password-2");
+  await assert.rejects(requireAdmin(reqWith(tok)), /Sign in required/);
+  const s2 = await setStaffPassword("a@example.org", "third-password-3"); const tok2 = makeSession("a@example.org", s2.hash);
+  await removeStaff("a@example.org");
+  await assert.rejects(requireAdmin(reqWith(tok2)), /Sign in required/);
+
   console.log("adoptions.check: ok", { bench8: b8.id, bench4: b4.id, ok: !!benchById(b8.id) });
   fs.rmSync(process.env.DATA_DIR!, { recursive: true, force: true });
   await closeStore();
