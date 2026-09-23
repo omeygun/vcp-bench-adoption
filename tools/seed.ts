@@ -18,8 +18,9 @@ const PLAQUES = ["In loving memory of\n{n}\nwho walked these trails every mornin
 
 async function main() {
   const store = getStore();
-  const staffEmail = process.env.ADMIN_EMAIL || "matinkositchutima@gmail.com", staffPw = process.env.ADMIN_PASSWORD || "changeme-please-1";
-  await setStaffPassword(staffEmail, staffPw, { mustChange: true }); const staff = [`${staffEmail} (password: ${staffPw})`];
+  const staffEmail = process.env.ADMIN_EMAIL, staffPw = process.env.ADMIN_PASSWORD;   // no defaults: the repo is public
+  if (!staffEmail || !staffPw || staffPw.length < 10) throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD (10+ characters) to seed");
+  await setStaffPassword(staffEmail, staffPw, { mustChange: true }); const staff = [`${staffEmail} (temporary password from ADMIN_PASSWORD)`];
   await setConfig("PRICING", { adoptCents: 350000 });
   const benches = [...BENCHES].sort(() => rnd() - 0.5).slice(0, 55);
   let n = 0;
