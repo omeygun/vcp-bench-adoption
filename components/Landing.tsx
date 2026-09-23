@@ -19,7 +19,7 @@ const STATS = [
 const STEPS = [
   { n: "01", title: "Pick a section", text: "Zoom into the corner of the park you love: the Parade Ground, Croton Woods, the lake." },
   { n: "02", title: "Choose a bench", text: "See which benches are already adopted, by whom and until when. Pick one that is free." },
-  { n: "03", title: "Dedicate it", text: "Add a name or a message and choose how long you want to adopt it for. No payment step here for now." },
+  { n: "03", title: "Dedicate it", text: "Write your plaque text and send a request. VCPA will contact you to arrange payment; the adoption lasts 10 years." },
 ];
 
 /** Free-licence photos (Wikimedia Commons, Flickr) in public/sections/<id>.jpg; each licence requires this credit. */
